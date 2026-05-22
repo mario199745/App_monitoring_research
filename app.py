@@ -1,5 +1,6 @@
 import io
 import re
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
@@ -13,12 +14,16 @@ from streamlit_plotly_events import plotly_events
 # =========================
 st.set_page_config(
     page_title="Analizador de publicaciones",
-    page_icon="📚",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 DEFAULT_SHEET = "BBDD"
+DEFAULT_DATA_FILE = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "BDCualitativa_v3 19.03.2025.xlsx"
+)
 
 TARGET_COL = "General_ Tipo de Publicación"
 FILTER_COLUMNS = [
@@ -114,6 +119,11 @@ def normalize_text(value) -> str:
 def get_excel_sheets(file_bytes: bytes):
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
     return xls.sheet_names
+
+
+@st.cache_data(show_spinner=False)
+def load_default_excel_file(file_path: str) -> bytes:
+    return Path(file_path).read_bytes()
 
 
 @st.cache_data(show_spinner=False)
@@ -267,7 +277,7 @@ def human_int(n):
 # =========================
 # INTERFAZ
 # =========================
-st.title("📚 Analizador interactivo de publicaciones")
+st.title("Analizador interactivo de publicaciones")
 st.caption(
     "Explora la base de datos, prioriza los tipos de publicación más relacionados con investigación y exporta los resultados."
 )
@@ -275,16 +285,22 @@ st.caption(
 with st.sidebar:
     st.markdown("## Carga de archivo")
     uploaded_file = st.file_uploader(
-        "Sube el archivo Excel",
+        "Reemplazar archivo Excel",
         type=["xlsx", "xls"],
-        help="La app funciona a partir del archivo cargado por el usuario.",
+        help="Si no se carga un archivo, la app usa automáticamente el Excel disponible en la carpeta data.",
     )
 
-if uploaded_file is None:
-    st.info("Sube un archivo Excel para comenzar.")
+if uploaded_file is not None:
+    file_bytes = uploaded_file.getvalue()
+    data_source = uploaded_file.name
+elif DEFAULT_DATA_FILE.exists():
+    file_bytes = load_default_excel_file(str(DEFAULT_DATA_FILE))
+    data_source = DEFAULT_DATA_FILE.name
+else:
+    st.info("No se encontró un archivo Excel en la carpeta data. Sube un archivo para comenzar.")
     st.stop()
 
-file_bytes = uploaded_file.getvalue()
+st.sidebar.caption(f"Archivo en uso: {data_source}")
 
 try:
     sheet_names = get_excel_sheets(file_bytes)
@@ -535,7 +551,7 @@ csv_bytes = df_filtered.to_csv(index=False).encode("utf-8-sig")
 d1, d2 = st.columns(2)
 with d1:
     st.download_button(
-        label="⬇️ Descargar Excel filtrado",
+        label="Descargar Excel filtrado",
         data=excel_bytes,
         file_name="BD_filtrada_investigacion.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -543,7 +559,7 @@ with d1:
     )
 with d2:
     st.download_button(
-        label="⬇️ Descargar CSV filtrado",
+        label="Descargar CSV filtrado",
         data=csv_bytes,
         file_name="BD_filtrada_investigacion.csv",
         mime="text/csv",

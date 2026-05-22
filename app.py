@@ -18,22 +18,34 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-DEFAULT_SHEET = "BBDD"
-DEFAULT_DATA_FILE = (
-    Path(__file__).resolve().parent
-    / "data"
-    / "BDCualitativa_v3 19.03.2025.xlsx"
-)
+DEFAULT_SHEET = "REPOSITORIO_DEPURADO"
+DATA_DIR = Path(__file__).resolve().parent / "data"
+PREFERRED_DATA_FILE = DATA_DIR / "BD_08_04_2026_DEPURADO_20260408_015909.xlsx"
 
 TARGET_COL = "General_ Tipo de Publicación"
 FILTER_COLUMNS = [
+    "COD BD SERFOR",
     "Nombre de Base de datos",
     "General_ Repositorio",
     "General_ Tipo de Publicación",
     "General_ Tipo de tesis Pre/Posgrado",
-    "General_ Especialidad",
-    "General_ Institución, revista o fuente que pública",
     "General_ Institución/Universidad",
+    "General_ SIGLAS UNIVERSIDAD/INSTITUCIÓN",
+    "General_ Nombre de revista",
+    "General_ Año",
+    "General_ Idioma",
+    "General_ Lugar de Publicación",
+    "General_ Publicación Nacional/Extranjera",
+    "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)",
+    "Ubicación_Ambito de estudio/Tipo de ecosistema (acuático, terrestre)",
+    "Ubicación_Región de estudio",
+    "Ubicación_Distrito",
+    "Ubicación_Provincia",
+    "ANIFFS: Eje Temático",
+    "ANIFFS: Área Temática",
+    "ANIFFS: Linea de investigación",
+    "FLAG_DUPLICADO_EXACTO_SIN_ID",
+    "FLAG_DUPLICADO_BIBLIOGRAFICO",
 ]
 
 POSITIVE_PATTERNS = {
@@ -119,6 +131,24 @@ def normalize_text(value) -> str:
 def get_excel_sheets(file_bytes: bytes):
     xls = pd.ExcelFile(io.BytesIO(file_bytes))
     return xls.sheet_names
+
+
+def get_default_data_file() -> Path | None:
+    if PREFERRED_DATA_FILE.exists():
+        return PREFERRED_DATA_FILE
+
+    if not DATA_DIR.exists():
+        return None
+
+    excel_files = [
+        path
+        for path in DATA_DIR.glob("*.xls*")
+        if not path.name.startswith("~$")
+    ]
+    if not excel_files:
+        return None
+
+    return max(excel_files, key=lambda path: path.stat().st_mtime)
 
 
 @st.cache_data(show_spinner=False)
@@ -293,12 +323,13 @@ with st.sidebar:
 if uploaded_file is not None:
     file_bytes = uploaded_file.getvalue()
     data_source = uploaded_file.name
-elif DEFAULT_DATA_FILE.exists():
-    file_bytes = load_default_excel_file(str(DEFAULT_DATA_FILE))
-    data_source = DEFAULT_DATA_FILE.name
 else:
-    st.info("No se encontró un archivo Excel en la carpeta data. Sube un archivo para comenzar.")
-    st.stop()
+    default_data_file = get_default_data_file()
+    if default_data_file is None:
+        st.info("No se encontró un archivo Excel en la carpeta data. Sube un archivo para comenzar.")
+        st.stop()
+    file_bytes = load_default_excel_file(str(default_data_file))
+    data_source = default_data_file.name
 
 st.sidebar.caption(f"Archivo en uso: {data_source}")
 

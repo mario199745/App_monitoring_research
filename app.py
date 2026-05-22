@@ -442,6 +442,94 @@ c4.metric("% prioridad alta", f"{high_share:.1f}%")
 
 st.divider()
 
+st.subheader("Resumen ejecutivo")
+
+category_summary = (
+    df_filtered[CATEGORY_COL]
+    .fillna("Sin dato")
+    .astype(str)
+    .str.strip()
+    .value_counts()
+    .rename_axis(CATEGORY_COL)
+    .reset_index(name="Registros")
+)
+type_summary = (
+    df_filtered[TARGET_COL]
+    .fillna("Sin dato")
+    .astype(str)
+    .str.strip()
+    .value_counts()
+    .rename_axis(TARGET_COL)
+    .reset_index(name="Registros")
+)
+
+exec_left, exec_mid, exec_right = st.columns([1, 1, 1.25])
+
+with exec_left:
+    st.subheader("Composición general")
+    if len(category_summary):
+        fig_category_pie = px.pie(
+            category_summary,
+            names=CATEGORY_COL,
+            values="Registros",
+            hole=0.42,
+        )
+        fig_category_pie.update_traces(textposition="inside", textinfo="percent+label")
+        fig_category_pie.update_layout(
+            height=360,
+            margin=dict(l=10, r=10, t=10, b=10),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_category_pie, use_container_width=True)
+    else:
+        st.info("No hay datos para mostrar con los filtros actuales.")
+
+with exec_mid:
+    st.subheader("Tesis vs artículos científicos")
+    if len(category_summary):
+        fig_category_bar = px.bar(
+            category_summary,
+            x=CATEGORY_COL,
+            y="Registros",
+            color=CATEGORY_COL,
+            text="Registros",
+        )
+        fig_category_bar.update_traces(textposition="outside", cliponaxis=False)
+        fig_category_bar.update_layout(
+            height=360,
+            xaxis_title="Categoría",
+            yaxis_title="Número de registros",
+            margin=dict(l=10, r=10, t=10, b=10),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_category_bar, use_container_width=True)
+    else:
+        st.info("No hay datos para mostrar con los filtros actuales.")
+
+with exec_right:
+    st.subheader("Detalle por tipo de publicación")
+    if len(type_summary):
+        fig_type_detail = px.bar(
+            type_summary,
+            x="Registros",
+            y=TARGET_COL,
+            orientation="h",
+            text="Registros",
+        )
+        fig_type_detail.update_traces(textposition="outside", cliponaxis=False)
+        fig_type_detail.update_layout(
+            height=360,
+            yaxis={"categoryorder": "total ascending"},
+            xaxis_title="Número de registros",
+            yaxis_title="Tipo de publicación",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_type_detail, use_container_width=True)
+    else:
+        st.info("No hay datos para mostrar con los filtros actuales.")
+
+st.divider()
+
 left, right = st.columns([1.2, 1])
 
 with left:

@@ -23,12 +23,13 @@ DATA_DIR = Path(__file__).resolve().parent / "data"
 PREFERRED_DATA_FILE = DATA_DIR / "BD_08_04_2026_DEPURADO_20260408_015909.xlsx"
 
 SOURCE_PUBLICATION_COL = "General_ Tipo de Publicación"
-TARGET_COL = "Categoria_Tesis_Articulo"
+CATEGORY_COL = "Categoria_Tesis_Articulo"
+TARGET_COL = SOURCE_PUBLICATION_COL
 FILTER_COLUMNS = [
     "COD BD SERFOR",
     "Nombre de Base de datos",
     "General_ Repositorio",
-    "Categoria_Tesis_Articulo",
+    CATEGORY_COL,
     "General_ Tipo de Publicación",
     "General_ Tipo de tesis Pre/Posgrado",
     "General_ Institución/Universidad",
@@ -171,11 +172,11 @@ def categorize_publication_type(value) -> str:
 
 
 def ensure_publication_category(df: pd.DataFrame) -> pd.DataFrame:
-    if TARGET_COL not in df.columns:
-        df[TARGET_COL] = df[SOURCE_PUBLICATION_COL].apply(categorize_publication_type)
+    if CATEGORY_COL not in df.columns:
+        df[CATEGORY_COL] = df[SOURCE_PUBLICATION_COL].apply(categorize_publication_type)
     else:
-        missing_category = df[TARGET_COL].isna() | (df[TARGET_COL].astype(str).str.strip() == "")
-        df.loc[missing_category, TARGET_COL] = df.loc[
+        missing_category = df[CATEGORY_COL].isna() | (df[CATEGORY_COL].astype(str).str.strip() == "")
+        df.loc[missing_category, CATEGORY_COL] = df.loc[
             missing_category, SOURCE_PUBLICATION_COL
         ].apply(categorize_publication_type)
     return df
@@ -596,7 +597,7 @@ with st.expander("Metodología aplicada para priorizar clases"):
 
         La app combina tres componentes:
         1. **Coincidencia por palabras clave**: términos como *investigación*, *científico*, *tesis*, *artículo*, *proyecto de investigación*.
-        2. **Similitud semántica TF-IDF**: compara cada categoría consolidada de publicación contra prototipos positivos y negativos.
+        2. **Similitud semántica TF-IDF**: compara cada tipo de publicación contra prototipos positivos y negativos.
         3. **Frecuencia relativa**: favorece categorías que además tienen presencia real en la base.
 
         El resultado es un **score de 0 a 100**:

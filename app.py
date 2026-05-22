@@ -22,11 +22,13 @@ DEFAULT_SHEET = "REPOSITORIO_DEPURADO"
 DATA_DIR = Path(__file__).resolve().parent / "data"
 PREFERRED_DATA_FILE = DATA_DIR / "BD_08_04_2026_DEPURADO_20260408_015909.xlsx"
 
-TARGET_COL = "General_ Tipo de Publicación"
+SOURCE_PUBLICATION_COL = "General_ Tipo de Publicación"
+TARGET_COL = "Categoria_Tesis_Articulo"
 FILTER_COLUMNS = [
     "COD BD SERFOR",
     "Nombre de Base de datos",
     "General_ Repositorio",
+    "Categoria_Tesis_Articulo",
     "General_ Tipo de Publicación",
     "General_ Tipo de tesis Pre/Posgrado",
     "General_ Institución/Universidad",
@@ -159,6 +161,24 @@ def load_default_excel_file(file_path: str) -> bytes:
 @st.cache_data(show_spinner=False)
 def load_excel_sheet(file_bytes: bytes, sheet_name: str):
     return pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name)
+
+
+def categorize_publication_type(value) -> str:
+    text = normalize_text(value)
+    if "tesis" in text:
+        return "Tesis"
+    return "Artículo científico"
+
+
+def ensure_publication_category(df: pd.DataFrame) -> pd.DataFrame:
+    if TARGET_COL not in df.columns:
+        df[TARGET_COL] = df[SOURCE_PUBLICATION_COL].apply(categorize_publication_type)
+    else:
+        missing_category = df[TARGET_COL].isna() | (df[TARGET_COL].astype(str).str.strip() == "")
+        df.loc[missing_category, TARGET_COL] = df.loc[
+            missing_category, SOURCE_PUBLICATION_COL
+        ].apply(categorize_publication_type)
+    return df
 
 
 def compute_keyword_score(text: str) -> int:
@@ -312,57 +332,30 @@ st.caption(
     "Explora la base de datos, prioriza los tipos de publicación más relacionados con investigación y exporta los resultados."
 )
 
-with st.sidebar:
-    st.markdown("## Carga de archivo")
-    uploaded_file = st.file_uploader(
-        "Reemplazar archivo Excel",
-        type=["xlsx", "xls"],
-        help="Si no se carga un archivo, la app usa automáticamente el Excel disponible en la carpeta data.",
-    )
-
-if uploaded_file is not None:
-    file_bytes = uploaded_file.getvalue()
-    data_source = uploaded_file.name
-else:
-    default_data_file = get_default_data_file()
-    if default_data_file is None:
-        st.info("No se encontró un archivo Excel en la carpeta data. Sube un archivo para comenzar.")
-        st.stop()
-    file_bytes = load_default_excel_file(str(default_data_file))
-    data_source = default_data_file.name
-
-st.sidebar.caption(f"Archivo en uso: {data_source}")
-
-try:
-    sheet_names = get_excel_sheets(file_bytes)
-except Exception as e:
-    st.error(f"No se pudo leer el archivo Excel: {e}")
+default_data_file = get_default_data_file()
+if default_data_file is None:
+    st.error("No se encontró el archivo Excel requerido en la carpeta data.")
     st.stop()
 
-if not sheet_names:
-    st.error("El archivo Excel no contiene hojas disponibles.")
-    st.stop()
-
-selected_sheet = st.sidebar.selectbox(
-    "Hoja a analizar",
-    options=sheet_names,
-    index=sheet_names.index(DEFAULT_SHEET) if DEFAULT_SHEET in sheet_names else 0,
-)
+file_bytes = load_default_excel_file(str(default_data_file))
 
 try:
-    with st.spinner("Procesando archivo..."):
-        df = load_excel_sheet(file_bytes, selected_sheet)
+    with st.spinner("Procesando información..."):
+        df = load_excel_sheet(file_bytes, DEFAULT_SHEET)
+except ValueError:
+    st.error(f"No se encontró la hoja requerida: {DEFAULT_SHEET}")
+    st.stop()
 except Exception as e:
-    st.error(f"No se pudo cargar la hoja seleccionada: {e}")
+    st.error(f"No se pudo cargar la información: {e}")
     st.stop()
 
 if df.empty:
-    st.warning("La hoja seleccionada no contiene registros.")
+    st.warning("La base no contiene registros.")
     st.stop()
 
 df.columns = [str(c).strip() for c in df.columns]
 
-required_columns = [TARGET_COL]
+required_columns = [SOURCE_PUBLICATION_COL]
 missing_columns = [c for c in required_columns if c not in df.columns]
 if missing_columns:
     st.error(
@@ -370,6 +363,7 @@ if missing_columns:
     )
     st.stop()
 
+df = ensure_publication_category(df)
 available_filter_cols = [c for c in FILTER_COLUMNS if c in df.columns]
 
 with st.sidebar:
@@ -571,13 +565,11 @@ if "General_ Año" in df_filtered.columns:
             fig_line.update_layout(height=430, margin=dict(l=10, r=10, t=10, b=10))
             st.plotly_chart(fig_line, use_container_width=True)
 
-st.divider()
-
-st.subheader("Base filtrada")
-st.dataframe(df_filtered, use_container_width=True, height=500)
-
 excel_bytes = to_excel_bytes(df_filtered, summary_filtered)
 csv_bytes = df_filtered.to_csv(index=False).encode("utf-8-sig")
+
+st.divider()
+st.subheader("Exportar resultados")
 
 d1, d2 = st.columns(2)
 with d1:
@@ -604,7 +596,7 @@ with st.expander("Metodología aplicada para priorizar clases"):
 
         La app combina tres componentes:
         1. **Coincidencia por palabras clave**: términos como *investigación*, *científico*, *tesis*, *artículo*, *proyecto de investigación*.
-        2. **Similitud semántica TF-IDF**: compara cada categoría de `General_ Tipo de Publicación` contra prototipos positivos y negativos.
+        2. **Similitud semántica TF-IDF**: compara cada categoría consolidada de publicación contra prototipos positivos y negativos.
         3. **Frecuencia relativa**: favorece categorías que además tienen presencia real en la base.
 
         El resultado es un **score de 0 a 100**:

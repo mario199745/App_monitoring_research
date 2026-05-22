@@ -1,698 +1,557 @@
 import io
+import json
 import re
+import unicodedata
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from sklearn.feature_extraction.text import TfidfVectorizer
-from streamlit_plotly_events import plotly_events
 
 
 # =========================
-# CONFIGURACIÓN GENERAL
+# CONFIGURACION GENERAL
 # =========================
 st.set_page_config(
-    page_title="Analizador de publicaciones",
+    page_title="Monitor bibliografico CONCYTEC/SERFOR",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-DEFAULT_SHEET = "REPOSITORIO_DEPURADO"
 DATA_DIR = Path(__file__).resolve().parent / "data"
-PREFERRED_DATA_FILE = DATA_DIR / "BD_08_04_2026_DEPURADO_20260408_015909.xlsx"
+GEOJSON_PATH = DATA_DIR / "GEO" / "DEP_PERU.geojson"
 
-SOURCE_PUBLICATION_COL = "General_ Tipo de Publicación"
+APP_FILE_PATTERN = "BD_APP_FINAL_*.xlsx"
+APP_SHEET = "BD_APP"
+TERRITORIAL_FILE_PATTERN = "BD_APP_TERRITORIAL_*.xlsx"
+TERRITORIAL_MAP_SHEET = "MAPA_DEPARTAMENTOS"
+TERRITORIAL_EXPANDED_SHEET = "REGIONES_EXPANDIDAS"
+
+TYPE_COL = "TIPO_PUBLICACION_NORM"
 CATEGORY_COL = "Categoria_Tesis_Articulo"
-TARGET_COL = SOURCE_PUBLICATION_COL
+YEAR_COL = "General_ Año"
+REGION_COL = "REGION_NORM_SUGERIDA"
+UNIQUE_COL = "USAR_PARA_CONTEO_UNICO"
+MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
+RECORD_ID_COL = "ID_REGISTRO_ANALISIS"
+
 FILTER_COLUMNS = [
-    "COD BD SERFOR",
     "Nombre de Base de datos",
     "General_ Repositorio",
     CATEGORY_COL,
-    "General_ Tipo de Publicación",
+    TYPE_COL,
     "General_ Tipo de tesis Pre/Posgrado",
     "General_ Institución/Universidad",
-    "General_ SIGLAS UNIVERSIDAD/INSTITUCIÓN",
-    "General_ Nombre de revista",
-    "General_ Año",
     "General_ Idioma",
-    "General_ Lugar de Publicación",
     "General_ Publicación Nacional/Extranjera",
     "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)",
-    "Ubicación_Ambito de estudio/Tipo de ecosistema (acuático, terrestre)",
-    "Ubicación_Región de estudio",
-    "Ubicación_Distrito",
+    REGION_COL,
     "Ubicación_Provincia",
+    "Ubicación_Distrito",
     "ANIFFS: Eje Temático",
     "ANIFFS: Área Temática",
     "ANIFFS: Linea de investigación",
-    "FLAG_DUPLICADO_EXACTO_SIN_ID",
-    "FLAG_DUPLICADO_BIBLIOGRAFICO",
-]
-
-POSITIVE_PATTERNS = {
-    r"\binvestigaci[oó]n\b": 32,
-    r"\bcient[ií]fic": 24,
-    r"\btesis\b": 20,
-    r"\btrabajo de investigaci[oó]n\b": 22,
-    r"\bproyecto de investigaci[oó]n\b": 20,
-    r"\binforme de investigaci[oó]n\b": 20,
-    r"\bcuaderno de investigaci[oó]n\b": 18,
-    r"\brevisi[oó]n cient[ií]fica\b": 18,
-    r"\bseminario de investigaci[oó]n\b": 14,
-    r"\bart[ií]culo\b": 12,
-    r"\bconferencia\b": 6,
-    r"\bdocumento de trabajo\b": 8,
-    r"\bmonograf[ií]a\b": 8,
-}
-NEGATIVE_PATTERNS = {
-    r"\bnota de prensa\b": -30,
-    r"\bweb\b": -24,
-    r"\bhoja divulgativa\b": -22,
-    r"\binfograf[ií]a\b": -22,
-    r"\bp[oó]ster\b": -14,
-    r"\bposter\b": -14,
-    r"\bbolet[ií]n\b": -12,
-    r"\bfolleto": -12,
-    r"\bgu[ií]a\b": -10,
-    r"\bmanual\b": -10,
-    r"\bcomentario\b": -10,
-    r"\bcorrespondencia\b": -12,
-    r"\botros\b": -10,
-}
-
-POSITIVE_PROTOTYPES = [
-    "articulo cientifico",
-    "articulo de investigacion",
-    "informe de investigacion",
-    "tesis de pregrado",
-    "tesis de posgrado",
-    "trabajo de investigacion",
-    "proyecto de investigacion",
-    "revision cientifica",
-    "cuaderno de investigacion",
-    "seminario de investigacion",
-]
-NEGATIVE_PROTOTYPES = [
-    "nota de prensa",
-    "web",
-    "infografia",
-    "boletin",
-    "hoja divulgativa",
-    "manual",
-    "guia tecnica",
-    "otros",
-    "poster",
-    "comentario",
 ]
 
 
 # =========================
 # UTILIDADES
 # =========================
-def normalize_text(value) -> str:
+def normalize_key(value) -> str:
     if pd.isna(value):
         return ""
-    value = str(value).strip().lower()
-    value = re.sub(r"\s+", " ", value)
-    replacements = {
-        "á": "a",
-        "é": "e",
-        "í": "i",
-        "ó": "o",
-        "ú": "u",
-        "ü": "u",
-        "ñ": "n",
-    }
-    for old, new in replacements.items():
-        value = value.replace(old, new)
-    return value
+    text = str(value).strip().upper()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
 
-@st.cache_data(show_spinner=False)
-def get_excel_sheets(file_bytes: bytes):
-    xls = pd.ExcelFile(io.BytesIO(file_bytes))
-    return xls.sheet_names
-
-
-def get_default_data_file() -> Path | None:
-    if PREFERRED_DATA_FILE.exists():
-        return PREFERRED_DATA_FILE
-
+def latest_file(pattern: str) -> Path | None:
     if not DATA_DIR.exists():
         return None
-
-    excel_files = [
-        path
-        for path in DATA_DIR.glob("*.xls*")
-        if not path.name.startswith("~$")
-    ]
-    if not excel_files:
+    files = [p for p in DATA_DIR.glob(pattern) if not p.name.startswith("~$")]
+    if not files:
         return None
-
-    return max(excel_files, key=lambda path: path.stat().st_mtime)
-
-
-@st.cache_data(show_spinner=False)
-def load_default_excel_file(file_path: str) -> bytes:
-    return Path(file_path).read_bytes()
+    return max(files, key=lambda p: p.stat().st_mtime)
 
 
 @st.cache_data(show_spinner=False)
-def load_excel_sheet(file_bytes: bytes, sheet_name: str):
-    return pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name)
-
-
-def categorize_publication_type(value) -> str:
-    text = normalize_text(value)
-    if "tesis" in text:
-        return "Tesis"
-    return "Artículo científico"
-
-
-def ensure_publication_category(df: pd.DataFrame) -> pd.DataFrame:
-    if CATEGORY_COL not in df.columns:
-        df[CATEGORY_COL] = df[SOURCE_PUBLICATION_COL].apply(categorize_publication_type)
-    else:
-        missing_category = df[CATEGORY_COL].isna() | (df[CATEGORY_COL].astype(str).str.strip() == "")
-        df.loc[missing_category, CATEGORY_COL] = df.loc[
-            missing_category, SOURCE_PUBLICATION_COL
-        ].apply(categorize_publication_type)
-    return df
-
-
-def compute_keyword_score(text: str) -> int:
-    score = 0
-    for pattern, weight in POSITIVE_PATTERNS.items():
-        if re.search(pattern, text):
-            score += weight
-    for pattern, weight in NEGATIVE_PATTERNS.items():
-        if re.search(pattern, text):
-            score += weight
-    return score
-
-
-def clamp(value, min_value=0, max_value=100):
-    return max(min_value, min(max_value, value))
-
-
-def label_priority(score: float) -> str:
-    if score >= 70:
-        return "Alta"
-    if score >= 45:
-        return "Media"
-    return "Baja"
+def load_excel(path: str, sheet_name: str) -> pd.DataFrame:
+    return pd.read_excel(path, sheet_name=sheet_name, dtype=object)
 
 
 @st.cache_data(show_spinner=False)
-def build_research_priority_table(df: pd.DataFrame, target_col: str):
-    working = df.copy()
-    working[target_col] = working[target_col].fillna("Sin dato").astype(str).str.strip()
+def load_geojson(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as file:
+        geojson = json.load(file)
 
-    summary = (
-        working.groupby(target_col, dropna=False)
-        .size()
-        .reset_index(name="Frecuencia")
-        .sort_values("Frecuencia", ascending=False)
-        .reset_index(drop=True)
+    for feature in geojson.get("features", []):
+        props = feature.setdefault("properties", {})
+        props["DEP_KEY"] = normalize_key(props.get("DEPARTAMEN"))
+
+    return geojson
+
+
+def human_int(value) -> str:
+    try:
+        return f"{int(value):,}".replace(",", ".")
+    except Exception:
+        return str(value)
+
+
+def non_empty_mask(series: pd.Series) -> pd.Series:
+    return series.notna() & series.astype(str).str.strip().ne("")
+
+
+def chart_note(df_scope: pd.DataFrame, column: str, label: str) -> None:
+    total = len(df_scope)
+    if column not in df_scope.columns:
+        st.caption(f"No se encontro la columna {label}.")
+        return
+
+    valid = int(non_empty_mask(df_scope[column]).sum())
+    missing = total - valid
+    coverage = valid / total * 100 if total else 0
+    st.caption(
+        f"Se muestran {human_int(valid)} registros con {label}. "
+        f"No se muestran {human_int(missing)} sin informacion para esta variable. "
+        f"Cobertura: {coverage:.1f}%."
     )
 
-    if summary.empty:
-        return pd.DataFrame(
-            columns=[
-                target_col,
-                "Frecuencia",
-                "Score_investigacion",
-                "Prioridad_investigacion",
-                "Keyword_score",
-                "Similitud_positiva",
-                "Similitud_negativa",
-            ]
-        )
 
-    summary["Texto_normalizado"] = summary[target_col].apply(normalize_text)
-    summary["Keyword_score"] = summary["Texto_normalizado"].apply(compute_keyword_score)
+def value_counts_table(df_scope: pd.DataFrame, column: str, value_name: str = "Registros") -> pd.DataFrame:
+    if column not in df_scope.columns:
+        return pd.DataFrame(columns=[column, value_name])
 
-    corpus = (
-        summary["Texto_normalizado"].tolist()
-        + [normalize_text(x) for x in POSITIVE_PROTOTYPES]
-        + [normalize_text(x) for x in NEGATIVE_PROTOTYPES]
-    )
-    vectorizer = TfidfVectorizer(ngram_range=(1, 3))
-    tfidf = vectorizer.fit_transform(corpus)
-
-    n_classes = len(summary)
-    class_vecs = tfidf[:n_classes]
-    pos_vecs = tfidf[n_classes : n_classes + len(POSITIVE_PROTOTYPES)]
-    neg_vecs = tfidf[n_classes + len(POSITIVE_PROTOTYPES) :]
-
-    pos_similarity = (class_vecs @ pos_vecs.T).toarray().mean(axis=1)
-    neg_similarity = (class_vecs @ neg_vecs.T).toarray().mean(axis=1)
-
-    summary["Similitud_positiva"] = pos_similarity
-    summary["Similitud_negativa"] = neg_similarity
-    summary["Score_semantico"] = ((pos_similarity - neg_similarity + 1) / 2) * 100
-
-    max_freq = max(summary["Frecuencia"].max(), 1)
-    summary["Score_frecuencia"] = (summary["Frecuencia"] / max_freq) * 15
-
-    summary["Score_investigacion"] = (
-        0.55 * summary["Score_semantico"]
-        + 0.35 * (summary["Keyword_score"] + 50)
-        + 0.10 * summary["Score_frecuencia"]
-    ).apply(clamp)
-
-    summary["Prioridad_investigacion"] = summary["Score_investigacion"].apply(label_priority)
-    summary = summary.sort_values(
-        ["Score_investigacion", "Frecuencia"], ascending=[False, False]
-    ).reset_index(drop=True)
-
-    return summary[
-        [
-            target_col,
-            "Frecuencia",
-            "Score_investigacion",
-            "Prioridad_investigacion",
-            "Keyword_score",
-            "Similitud_positiva",
-            "Similitud_negativa",
-        ]
-    ]
+    work = df_scope.loc[non_empty_mask(df_scope[column]), column].astype(str).str.strip()
+    return work.value_counts().rename_axis(column).reset_index(name=value_name)
 
 
-def apply_filters(df: pd.DataFrame, visible_filter_cols):
-    filtered = df.copy()
-
+def apply_filters(df_scope: pd.DataFrame, filter_columns: list[str]) -> pd.DataFrame:
+    filtered = df_scope.copy()
     st.sidebar.markdown("## Filtros")
-    for col in visible_filter_cols:
+
+    for col in filter_columns:
         if col not in filtered.columns:
             continue
 
-        series = filtered[col].dropna().astype(str).str.strip()
-        options = sorted([x for x in series.unique().tolist() if x != ""])
+        values = filtered.loc[non_empty_mask(filtered[col]), col].astype(str).str.strip()
+        options = sorted(values.unique().tolist())
         if not options:
             continue
 
         selected = st.sidebar.multiselect(
-            label=col,
+            col,
             options=options,
             default=[],
             key=f"filter_{col}",
         )
         if selected:
-            filtered = filtered[
-                filtered[col].fillna("").astype(str).str.strip().isin(selected)
-            ]
+            filtered = filtered[filtered[col].fillna("").astype(str).str.strip().isin(selected)]
 
     return filtered
 
 
+def filtered_expanded_regions(df_scope: pd.DataFrame, expanded_regions: pd.DataFrame) -> pd.DataFrame:
+    if RECORD_ID_COL not in df_scope.columns or RECORD_ID_COL not in expanded_regions.columns:
+        return expanded_regions.iloc[0:0].copy()
+
+    visible_ids = set(df_scope[RECORD_ID_COL].dropna().astype(str))
+    expanded = expanded_regions.copy()
+    expanded[RECORD_ID_COL] = expanded[RECORD_ID_COL].astype(str)
+    return expanded[expanded[RECORD_ID_COL].isin(visible_ids)].copy()
+
+
+def build_department_summary(df_scope: pd.DataFrame, expanded_regions: pd.DataFrame, map_base: pd.DataFrame) -> pd.DataFrame:
+    expanded = filtered_expanded_regions(df_scope, expanded_regions)
+    expanded = expanded[expanded.get("DEP_EN_GEOJSON", False).astype(bool)].copy()
+
+    if expanded.empty:
+        counts = pd.DataFrame(columns=["DEP_KEY"])
+    else:
+        counts = (
+            expanded.groupby("DEP_KEY", dropna=False)
+            .agg(
+                registros_territoriales=(RECORD_ID_COL, "count"),
+                publicaciones_bibliograficas=(MASTER_KEY_COL, "nunique"),
+            )
+            .reset_index()
+        )
+
+    summary = map_base[["IDDPTO", "DEPARTAMEN_GEO", "DEP_KEY", "CAPITAL"]].merge(
+        counts,
+        on="DEP_KEY",
+        how="left",
+    )
+    for col in ["registros_territoriales", "publicaciones_bibliograficas"]:
+        summary[col] = summary[col].fillna(0).astype(int)
+
+    return summary
+
+
+def territorial_note(df_scope: pd.DataFrame, expanded_regions: pd.DataFrame) -> None:
+    expanded = filtered_expanded_regions(df_scope, expanded_regions)
+    total = len(df_scope)
+    with_region = expanded.loc[expanded.get("DEP_EN_GEOJSON", False).astype(bool), RECORD_ID_COL].nunique()
+    without_region = total - int(with_region)
+    coverage = with_region / total * 100 if total else 0
+    st.caption(
+        f"El mapa muestra {human_int(with_region)} registros con departamento normalizado. "
+        f"No se muestran {human_int(without_region)} registros sin region cruzada al GeoJSON. "
+        f"Cobertura territorial: {coverage:.1f}%."
+    )
+
+
 @st.cache_data(show_spinner=False)
-def to_excel_bytes(df_main: pd.DataFrame, df_summary: pd.DataFrame) -> bytes:
+def to_excel_bytes(df_main: pd.DataFrame, summary_type: pd.DataFrame, summary_region: pd.DataFrame) -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_main.to_excel(writer, index=False, sheet_name="Datos_filtrados")
-        df_summary.to_excel(writer, index=False, sheet_name="Resumen_tipos")
+        summary_type.to_excel(writer, index=False, sheet_name="Resumen_tipo")
+        summary_region.to_excel(writer, index=False, sheet_name="Resumen_region")
     output.seek(0)
     return output.getvalue()
 
 
-def human_int(n):
-    try:
-        return f"{int(n):,}".replace(",", ".")
-    except Exception:
-        return str(n)
+# =========================
+# CARGA DE DATOS
+# =========================
+app_file = latest_file(APP_FILE_PATTERN)
+territorial_file = latest_file(TERRITORIAL_FILE_PATTERN)
+
+if app_file is None:
+    st.error(f"No se encontro un archivo {APP_FILE_PATTERN} en la carpeta data.")
+    st.stop()
+if territorial_file is None:
+    st.error(f"No se encontro un archivo {TERRITORIAL_FILE_PATTERN} en la carpeta data.")
+    st.stop()
+if not GEOJSON_PATH.exists():
+    st.error(f"No se encontro el GeoJSON requerido: {GEOJSON_PATH}")
+    st.stop()
+
+try:
+    df = load_excel(str(app_file), APP_SHEET)
+    map_base = load_excel(str(territorial_file), TERRITORIAL_MAP_SHEET)
+    expanded_regions = load_excel(str(territorial_file), TERRITORIAL_EXPANDED_SHEET)
+    peru_geojson = load_geojson(str(GEOJSON_PATH))
+except Exception as exc:
+    st.error(f"No se pudo cargar la informacion: {exc}")
+    st.stop()
+
+df.columns = [str(col).strip() for col in df.columns]
+
+required = [TYPE_COL, CATEGORY_COL, YEAR_COL, UNIQUE_COL, MASTER_KEY_COL, RECORD_ID_COL]
+missing = [col for col in required if col not in df.columns]
+if missing:
+    st.error("La base final no contiene columnas requeridas: " + ", ".join(missing))
+    st.stop()
 
 
 # =========================
 # INTERFAZ
 # =========================
-st.title("Analizador interactivo de publicaciones")
+st.title("Monitor bibliografico CONCYTEC/SERFOR")
 st.caption(
-    "Explora la base de datos, prioriza los tipos de publicación más relacionados con investigación y exporta los resultados."
+    "Explora publicaciones cientificas, tesis y articulos asociados a recursos forestales, "
+    "biodiversidad y temas afines. La base puede leerse como publicaciones unicas para evitar "
+    "sobreconteos, o como registros completos para conservar relaciones con regiones, temas, "
+    "instituciones, especies y repositorios."
 )
-
-default_data_file = get_default_data_file()
-if default_data_file is None:
-    st.error("No se encontró el archivo Excel requerido en la carpeta data.")
-    st.stop()
-
-file_bytes = load_default_excel_file(str(default_data_file))
-
-try:
-    with st.spinner("Procesando información..."):
-        df = load_excel_sheet(file_bytes, DEFAULT_SHEET)
-except ValueError:
-    st.error(f"No se encontró la hoja requerida: {DEFAULT_SHEET}")
-    st.stop()
-except Exception as e:
-    st.error(f"No se pudo cargar la información: {e}")
-    st.stop()
-
-if df.empty:
-    st.warning("La base no contiene registros.")
-    st.stop()
-
-df.columns = [str(c).strip() for c in df.columns]
-
-required_columns = [SOURCE_PUBLICATION_COL]
-missing_columns = [c for c in required_columns if c not in df.columns]
-if missing_columns:
-    st.error(
-        "El archivo no contiene las columnas obligatorias: " + ", ".join(missing_columns)
-    )
-    st.stop()
-
-df = ensure_publication_category(df)
-available_filter_cols = [c for c in FILTER_COLUMNS if c in df.columns]
 
 with st.sidebar:
-    st.markdown("## Parámetros analíticos")
-    visible_levels = st.multiselect(
-        "Prioridad a mostrar",
-        options=["Alta", "Media", "Baja"],
-        default=["Alta", "Media", "Baja"],
+    st.markdown("## Modo de analisis")
+    analysis_mode = st.radio(
+        "Unidad de conteo",
+        options=["Registros completos", "Publicaciones unicas"],
+        help=(
+            "Publicaciones unicas usa USAR_PARA_CONTEO_UNICO = SI. "
+            "Registros completos conserva relaciones territoriales, tematicas y de fuente."
+        ),
     )
-    score_threshold = st.slider(
-        "Umbral mínimo de score de investigación",
-        min_value=0,
-        max_value=100,
-        value=45,
-        help="Permite quedarte con categorías más cercanas al ámbito de investigación.",
-    )
-    max_categories_chart = st.slider(
-        "Máximo de categorías en gráficos",
-        min_value=5,
-        max_value=25,
-        value=12,
-    )
+    max_categories_chart = st.slider("Maximo de categorias en graficos", 5, 25, 12)
 
-summary_types = build_research_priority_table(df, TARGET_COL)
-priority_map = dict(
-    zip(summary_types[TARGET_COL], summary_types["Prioridad_investigacion"])
+df_mode = df.copy()
+if analysis_mode == "Publicaciones unicas":
+    df_mode = df_mode[df_mode[UNIQUE_COL].fillna("").astype(str).str.upper().eq("SI")].copy()
+
+available_filter_cols = [col for col in FILTER_COLUMNS if col in df_mode.columns]
+df_filtered = apply_filters(df_mode, available_filter_cols)
+
+type_summary = value_counts_table(df_filtered, TYPE_COL)
+category_summary = value_counts_table(df_filtered, CATEGORY_COL)
+region_summary = build_department_summary(df_filtered, expanded_regions, map_base)
+
+unique_publications = df_filtered[MASTER_KEY_COL].nunique(dropna=True)
+additional_relations = max(len(df_filtered) - unique_publications, 0)
+regions_with_data = int((region_summary["registros_territoriales"] > 0).sum())
+
+k1, k2, k3, k4, k5 = st.columns(5)
+k1.metric("Registros visibles", human_int(len(df_filtered)))
+k2.metric("Publicaciones unicas", human_int(unique_publications))
+k3.metric("Relaciones adicionales", human_int(additional_relations))
+k4.metric("Departamentos con datos", human_int(regions_with_data))
+k5.metric("Tipos normalizados", human_int(df_filtered[TYPE_COL].nunique(dropna=True)))
+
+st.info(
+    "Una misma publicacion puede estar asociada a varias regiones, especies, temas o fuentes. "
+    "Use publicaciones unicas para conteos bibliograficos y registros completos para analisis territorial o tematico."
 )
-score_map = dict(
-    zip(summary_types[TARGET_COL], summary_types["Score_investigacion"])
-)
-
-df["Prioridad_investigacion"] = (
-    df[TARGET_COL].fillna("Sin dato").astype(str).str.strip().map(priority_map)
-)
-df["Score_investigacion"] = (
-    df[TARGET_COL].fillna("Sin dato").astype(str).str.strip().map(score_map)
-)
-
-if "clicked_publication_type" not in st.session_state:
-    st.session_state.clicked_publication_type = None
-
-selected_from_click = st.session_state.clicked_publication_type
-if selected_from_click:
-    st.info(f"Filtro activado desde gráfico: **{selected_from_click}**")
-    if st.button("Quitar filtro del gráfico"):
-        st.session_state.clicked_publication_type = None
-        st.rerun()
-
-df_filtered = df[
-    (df["Score_investigacion"] >= score_threshold)
-    & (df["Prioridad_investigacion"].isin(visible_levels))
-].copy()
-
-if st.session_state.clicked_publication_type:
-    df_filtered = df_filtered[
-        df_filtered[TARGET_COL].fillna("Sin dato").astype(str).str.strip()
-        == st.session_state.clicked_publication_type
-    ]
-
-df_filtered = apply_filters(df_filtered, available_filter_cols)
-summary_filtered = build_research_priority_table(df_filtered, TARGET_COL)
-
-# KPIs
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Registros visibles", human_int(len(df_filtered)))
-c2.metric("Tipos de publicación visibles", human_int(df_filtered[TARGET_COL].nunique(dropna=True)))
-c3.metric(
-    "Score promedio",
-    f"{df_filtered['Score_investigacion'].mean():.1f}" if len(df_filtered) else "0.0",
-)
-high_share = (
-    (df_filtered["Prioridad_investigacion"] == "Alta").mean() * 100 if len(df_filtered) else 0
-)
-c4.metric("% prioridad alta", f"{high_share:.1f}%")
 
 st.divider()
 
-st.subheader("Resumen ejecutivo")
+st.subheader("Distribucion territorial")
+territorial_note(df_filtered, expanded_regions)
 
-category_summary = (
-    df_filtered[CATEGORY_COL]
-    .fillna("Sin dato")
-    .astype(str)
-    .str.strip()
-    .value_counts()
-    .rename_axis(CATEGORY_COL)
-    .reset_index(name="Registros")
-)
-type_summary = (
-    df_filtered[TARGET_COL]
-    .fillna("Sin dato")
-    .astype(str)
-    .str.strip()
-    .value_counts()
-    .rename_axis(TARGET_COL)
-    .reset_index(name="Registros")
+map_metric = (
+    "publicaciones_bibliograficas"
+    if analysis_mode == "Publicaciones unicas"
+    else "registros_territoriales"
 )
 
-exec_left, exec_mid, exec_right = st.columns([1, 1, 1.25])
+left_map, right_map = st.columns([1.35, 1])
+with left_map:
+    fig_map = px.choropleth(
+        region_summary,
+        geojson=peru_geojson,
+        locations="DEP_KEY",
+        featureidkey="properties.DEP_KEY",
+        color=map_metric,
+        hover_name="DEPARTAMEN_GEO",
+        hover_data={
+            "registros_territoriales": True,
+            "publicaciones_bibliograficas": True,
+            "DEP_KEY": False,
+            "IDDPTO": False,
+        },
+        color_continuous_scale="YlGnBu",
+    )
+    fig_map.update_geos(fitbounds="locations", visible=False)
+    fig_map.update_layout(height=520, margin=dict(l=0, r=0, t=0, b=0))
+    st.plotly_chart(fig_map, use_container_width=True)
 
-with exec_left:
-    st.subheader("Composición general")
+with right_map:
+    st.markdown("#### Departamentos principales")
+    top_regions = (
+        region_summary.sort_values(map_metric, ascending=False)
+        .head(max_categories_chart)
+        .rename(columns={"DEPARTAMEN_GEO": "Departamento", map_metric: "Registros"})
+    )
+    fig_regions = px.bar(
+        top_regions,
+        x="Registros",
+        y="Departamento",
+        orientation="h",
+        text="Registros",
+    )
+    fig_regions.update_layout(
+        height=520,
+        yaxis={"categoryorder": "total ascending"},
+        xaxis_title="Registros" if analysis_mode == "Registros completos" else "Publicaciones",
+        yaxis_title="Departamento",
+        margin=dict(l=10, r=10, t=10, b=10),
+    )
+    st.plotly_chart(fig_regions, use_container_width=True)
+
+st.divider()
+
+st.subheader("Resumen bibliografico")
+col_a, col_b, col_c = st.columns([1, 1, 1.2])
+
+with col_a:
+    st.markdown("#### Tipo normalizado")
+    chart_note(df_filtered, TYPE_COL, "tipo de publicacion")
+    if len(type_summary):
+        fig_type = px.bar(
+            type_summary.head(max_categories_chart),
+            x=TYPE_COL,
+            y="Registros",
+            color=TYPE_COL,
+            text="Registros",
+        )
+        fig_type.update_layout(
+            height=380,
+            xaxis_title="Tipo de publicacion",
+            yaxis_title="Registros",
+            xaxis_tickangle=-25,
+            showlegend=False,
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_type, use_container_width=True)
+    else:
+        st.info("No hay datos para mostrar.")
+
+with col_b:
+    st.markdown("#### Categoria tesis/articulo")
+    chart_note(df_filtered, CATEGORY_COL, "categoria")
     if len(category_summary):
-        fig_category_pie = px.pie(
+        fig_category = px.pie(
             category_summary,
             names=CATEGORY_COL,
             values="Registros",
-            hole=0.42,
+            hole=0.4,
         )
-        fig_category_pie.update_traces(textposition="inside", textinfo="percent+label")
-        fig_category_pie.update_layout(
-            height=360,
-            margin=dict(l=10, r=10, t=10, b=10),
-            showlegend=False,
-        )
-        st.plotly_chart(fig_category_pie, use_container_width=True)
+        fig_category.update_traces(textposition="inside", textinfo="percent+label")
+        fig_category.update_layout(height=380, showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+        st.plotly_chart(fig_category, use_container_width=True)
     else:
-        st.info("No hay datos para mostrar con los filtros actuales.")
+        st.info("No hay datos para mostrar.")
 
-with exec_mid:
-    st.subheader("Tesis vs artículos científicos")
-    if len(category_summary):
-        fig_category_bar = px.bar(
-            category_summary,
-            x=CATEGORY_COL,
-            y="Registros",
-            color=CATEGORY_COL,
-            text="Registros",
-        )
-        fig_category_bar.update_traces(textposition="outside", cliponaxis=False)
-        fig_category_bar.update_layout(
-            height=360,
-            xaxis_title="Categoría",
-            yaxis_title="Número de registros",
-            margin=dict(l=10, r=10, t=10, b=10),
-            showlegend=False,
-        )
-        st.plotly_chart(fig_category_bar, use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar con los filtros actuales.")
-
-with exec_right:
-    st.subheader("Detalle por tipo de publicación")
-    if len(type_summary):
-        fig_type_detail = px.bar(
-            type_summary,
+with col_c:
+    st.markdown("#### Repositorios principales")
+    repo_col = "General_ Repositorio"
+    repo_summary = value_counts_table(df_filtered, repo_col)
+    chart_note(df_filtered, repo_col, "repositorio")
+    if len(repo_summary):
+        fig_repo = px.bar(
+            repo_summary.head(max_categories_chart),
             x="Registros",
-            y=TARGET_COL,
+            y=repo_col,
             orientation="h",
             text="Registros",
         )
-        fig_type_detail.update_traces(textposition="outside", cliponaxis=False)
-        fig_type_detail.update_layout(
-            height=360,
+        fig_repo.update_layout(
+            height=380,
             yaxis={"categoryorder": "total ascending"},
-            xaxis_title="Número de registros",
-            yaxis_title="Tipo de publicación",
+            xaxis_title="Registros",
+            yaxis_title="Repositorio",
             margin=dict(l=10, r=10, t=10, b=10),
         )
-        st.plotly_chart(fig_type_detail, use_container_width=True)
+        st.plotly_chart(fig_repo, use_container_width=True)
     else:
-        st.info("No hay datos para mostrar con los filtros actuales.")
+        st.info("No hay datos para mostrar.")
 
 st.divider()
 
-left, right = st.columns([1.2, 1])
+if YEAR_COL in df_filtered.columns:
+    st.subheader("Evolucion temporal")
+    year_df = df_filtered.copy()
+    year_df[YEAR_COL] = pd.to_numeric(year_df[YEAR_COL], errors="coerce")
+    year_valid = year_df.dropna(subset=[YEAR_COL]).copy()
+    chart_note(df_filtered, YEAR_COL, "anio de publicacion")
 
-with left:
-    st.subheader("Ranking de clases según cercanía a investigación")
-    st.dataframe(
-        summary_types.style.format(
-            {
-                "Score_investigacion": "{:.1f}",
-                "Similitud_positiva": "{:.3f}",
-                "Similitud_negativa": "{:.3f}",
-            }
-        ),
-        use_container_width=True,
-        height=420,
-    )
-
-with right:
-    st.subheader("Top categorías priorizadas")
-    chart_df = summary_types.head(max_categories_chart).copy()
-
-    if not chart_df.empty:
-        fig_bar = px.bar(
-            chart_df,
-            x="Score_investigacion",
-            y=TARGET_COL,
-            color="Prioridad_investigacion",
-            orientation="h",
-            hover_data={"Frecuencia": True, "Score_investigacion": ":.1f"},
-        )
-        fig_bar.update_layout(
-            height=430,
-            yaxis={"categoryorder": "total ascending"},
-            xaxis_title="Score de investigación",
-            yaxis_title="Tipo de publicación",
-            margin=dict(l=10, r=10, t=10, b=10),
-        )
-        selected_points = plotly_events(
-            fig_bar,
-            click_event=True,
-            hover_event=False,
-            select_event=False,
-            override_height=430,
-            key="bar_click",
-        )
-        if selected_points:
-            point_index = selected_points[0]["pointIndex"]
-            selected_category = chart_df.iloc[point_index][TARGET_COL]
-            st.session_state.clicked_publication_type = selected_category
-            st.rerun()
-    else:
-        st.info("No hay categorías para mostrar.")
-
-st.divider()
-
-col_a, col_b = st.columns([1, 1])
-
-with col_a:
-    st.subheader("Distribución de registros por tipo de publicación")
-    freq_chart = (
-        summary_filtered.sort_values("Frecuencia", ascending=False)
-        .head(max_categories_chart)
-        .copy()
-    )
-    if len(freq_chart):
-        fig_freq = px.bar(
-            freq_chart,
-            x=TARGET_COL,
-            y="Frecuencia",
-            color="Prioridad_investigacion",
-            hover_data={"Score_investigacion": ":.1f"},
-        )
-        fig_freq.update_layout(
-            height=430,
-            xaxis_title="Tipo de publicación",
-            yaxis_title="Número de registros",
-            xaxis_tickangle=-35,
-            margin=dict(l=10, r=10, t=10, b=10),
-        )
-        st.plotly_chart(fig_freq, use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar con los filtros actuales.")
-
-with col_b:
-    st.subheader("Participación porcentual")
-    if len(freq_chart):
-        fig_pie = px.pie(
-            freq_chart,
-            names=TARGET_COL,
-            values="Frecuencia",
-            hole=0.35,
-        )
-        fig_pie.update_layout(height=430, margin=dict(l=10, r=10, t=10, b=10))
-        st.plotly_chart(fig_pie, use_container_width=True)
-    else:
-        st.info("No hay datos para mostrar con los filtros actuales.")
-
-if "General_ Año" in df_filtered.columns:
-    temp_df = df_filtered.copy()
-    temp_df["General_ Año"] = pd.to_numeric(temp_df["General_ Año"], errors="coerce")
-    temp_df = temp_df.dropna(subset=["General_ Año"])
-    if len(temp_df):
-        st.subheader("Evolución temporal")
-        time_summary = (
-            temp_df.groupby(["General_ Año", TARGET_COL], dropna=False)
+    if len(year_valid):
+        year_valid[YEAR_COL] = year_valid[YEAR_COL].astype(int)
+        temporal = (
+            year_valid.groupby([YEAR_COL, TYPE_COL], dropna=False)
             .size()
-            .reset_index(name="Frecuencia")
+            .reset_index(name="Registros")
+            .sort_values(YEAR_COL)
         )
-        top_types = (
-            summary_filtered.sort_values("Frecuencia", ascending=False)[TARGET_COL]
-            .head(min(6, max_categories_chart))
-            .tolist()
+        fig_time = px.line(
+            temporal,
+            x=YEAR_COL,
+            y="Registros",
+            color=TYPE_COL,
+            markers=True,
         )
-        time_summary = time_summary[time_summary[TARGET_COL].isin(top_types)]
-        if len(time_summary):
-            fig_line = px.line(
-                time_summary.sort_values("General_ Año"),
-                x="General_ Año",
-                y="Frecuencia",
-                color=TARGET_COL,
-                markers=True,
-            )
-            fig_line.update_layout(height=430, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig_line, use_container_width=True)
-
-excel_bytes = to_excel_bytes(df_filtered, summary_filtered)
-csv_bytes = df_filtered.to_csv(index=False).encode("utf-8-sig")
+        fig_time.update_layout(
+            height=430,
+            xaxis_title="Anio",
+            yaxis_title="Registros",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_time, use_container_width=True)
+    else:
+        st.info("No hay registros con anio valido.")
 
 st.divider()
-st.subheader("Exportar resultados")
+
+topic_left, topic_right = st.columns(2)
+with topic_left:
+    topic_col = "ANIFFS: Área Temática"
+    st.subheader("Areas tematicas")
+    chart_note(df_filtered, topic_col, "area tematica")
+    topic_summary = value_counts_table(df_filtered, topic_col)
+    if len(topic_summary):
+        fig_topic = px.bar(
+            topic_summary.head(max_categories_chart),
+            x="Registros",
+            y=topic_col,
+            orientation="h",
+            text="Registros",
+        )
+        fig_topic.update_layout(
+            height=430,
+            yaxis={"categoryorder": "total ascending"},
+            xaxis_title="Registros",
+            yaxis_title="Area tematica",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_topic, use_container_width=True)
+    else:
+        st.info("No hay datos para mostrar.")
+
+with topic_right:
+    line_col = "ANIFFS: Linea de investigación"
+    st.subheader("Lineas de investigacion")
+    chart_note(df_filtered, line_col, "linea de investigacion")
+    line_summary = value_counts_table(df_filtered, line_col)
+    if len(line_summary):
+        fig_line = px.bar(
+            line_summary.head(max_categories_chart),
+            x="Registros",
+            y=line_col,
+            orientation="h",
+            text="Registros",
+        )
+        fig_line.update_layout(
+            height=430,
+            yaxis={"categoryorder": "total ascending"},
+            xaxis_title="Registros",
+            yaxis_title="Linea de investigacion",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.info("No hay datos para mostrar.")
+
+st.divider()
+
+st.subheader("Tabla exploratoria")
+default_columns = [
+    "General_ Título",
+    "General_ Autor(es)",
+    YEAR_COL,
+    TYPE_COL,
+    REGION_COL,
+    "General_ Institución/Universidad",
+    "General_ Repositorio",
+    "URL_PRINCIPAL_DETECTADA",
+]
+visible_columns = [col for col in default_columns if col in df_filtered.columns]
+st.dataframe(df_filtered[visible_columns].head(500), use_container_width=True, height=380)
+st.caption("La tabla muestra hasta 500 registros para mantener una navegacion fluida.")
+
+excel_bytes = to_excel_bytes(df_filtered, type_summary, region_summary)
+csv_bytes = df_filtered.to_csv(index=False).encode("utf-8-sig")
 
 d1, d2 = st.columns(2)
 with d1:
     st.download_button(
-        label="Descargar Excel filtrado",
+        "Descargar Excel filtrado",
         data=excel_bytes,
-        file_name="BD_filtrada_investigacion.xlsx",
+        file_name="BD_app_filtrada.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
     )
 with d2:
     st.download_button(
-        label="Descargar CSV filtrado",
+        "Descargar CSV filtrado",
         data=csv_bytes,
-        file_name="BD_filtrada_investigacion.csv",
+        file_name="BD_app_filtrada.csv",
         mime="text/csv",
         use_container_width=True,
     )
 
-with st.expander("Metodología aplicada para priorizar clases"):
+with st.expander("Como interpretar la base"):
     st.markdown(
         """
-        **Cómo se calcula el score de investigación**
+        La base combina informacion bibliografica y relaciones de analisis. Una misma publicacion puede
+        aparecer asociada a varias regiones, especies, temas o fuentes.
 
-        La app combina tres componentes:
-        1. **Coincidencia por palabras clave**: términos como *investigación*, *científico*, *tesis*, *artículo*, *proyecto de investigación*.
-        2. **Similitud semántica TF-IDF**: compara cada tipo de publicación contra prototipos positivos y negativos.
-        3. **Frecuencia relativa**: favorece categorías que además tienen presencia real en la base.
-
-        El resultado es un **score de 0 a 100**:
-        - **Alta**: 70 a 100
-        - **Media**: 45 a 69
-        - **Baja**: 0 a 44
-
-        Este criterio es **heurístico y ajustable**. Puedes cambiar el umbral desde la barra lateral.
+        - **Publicaciones unicas**: evita sobreconteos bibliograficos usando `USAR_PARA_CONTEO_UNICO = SI`.
+        - **Registros completos**: conserva las relaciones territoriales, tematicas e institucionales.
+        - **Mapa departamental**: usa solo registros con region normalizada y cruzada al GeoJSON del Peru.
         """
     )

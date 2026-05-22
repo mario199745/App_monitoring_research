@@ -483,26 +483,26 @@ with topic_left:
         st.info("No hay datos para mostrar.")
 
 with topic_right:
-    line_col = "ANIFFS: Linea de investigación"
-    st.subheader("Lineas de investigacion")
-    chart_note(df_filtered, line_col, "linea de investigacion")
-    line_summary = value_counts_table(df_filtered, line_col)
-    if len(line_summary):
-        fig_line = px.bar(
-            line_summary.head(max_categories_chart),
+    institution_col = "General_ Institución/Universidad"
+    st.subheader("Instituciones y universidades")
+    chart_note(df_filtered, institution_col, "institucion o universidad")
+    institution_summary = value_counts_table(df_filtered, institution_col)
+    if len(institution_summary):
+        fig_institution = px.bar(
+            institution_summary.head(max_categories_chart),
             x="Registros",
-            y=line_col,
+            y=institution_col,
             orientation="h",
             text="Registros",
         )
-        fig_line.update_layout(
+        fig_institution.update_layout(
             height=430,
             yaxis={"categoryorder": "total ascending"},
             xaxis_title="Registros",
-            yaxis_title="Linea de investigacion",
+            yaxis_title="Institucion / universidad",
             margin=dict(l=10, r=10, t=10, b=10),
         )
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_institution, use_container_width=True)
     else:
         st.info("No hay datos para mostrar.")
 

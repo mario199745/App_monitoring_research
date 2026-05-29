@@ -520,11 +520,3 @@ with tabs[4]:
             mime="text/csv",
             use_container_width=True,
         )
-
-with st.expander("Como interpretar la base"):
-    st.markdown(
-        """
-        La base presenta publicaciones unicas para facilitar la lectura publica de los resultados.
-        Los campos sin clasificacion se agrupan como **Otros** cuando corresponde.
-        """
-    )

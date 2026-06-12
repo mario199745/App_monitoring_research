@@ -536,7 +536,9 @@ st.caption(
     "o repositorios; por ello, las categorías no son excluyentes."
 )
 
-tabs = st.tabs(["General", "Territorio", "Tiempo", "Temas", "Datos"])
+tabs = st.tabs(
+    ["General", "Territorio", "Tiempo", "Temas", "Instituciones", "Datos"]
+)
 
 with tabs[0]:
     st.subheader("Resumen bibliográfico")
@@ -698,39 +700,19 @@ with tabs[2]:
         st.plotly_chart(time_figure, width="stretch")
 
 with tabs[3]:
-    st.subheader("Temas e instituciones")
-    topic_left, topic_right = st.columns(2)
-    with topic_left:
-        if not area_summary.empty:
-            st.plotly_chart(
-                horizontal_bar(
-                    area_summary,
-                    "categoria",
-                    "Publicaciones vinculadas por área temática",
-                    max_categories_chart,
-                ),
-                width="stretch",
-            )
-        else:
-            st.info("No hay áreas temáticas para mostrar.")
-    with topic_right:
-        institution_summary = relation_summary(
-            relations.get("institucion", pd.DataFrame()),
-            df_filtered,
-            include_others,
+    st.subheader("Temas")
+    if not area_summary.empty:
+        st.plotly_chart(
+            horizontal_bar(
+                area_summary,
+                "categoria",
+                "Publicaciones vinculadas por área temática",
+                max_categories_chart,
+            ),
+            width="stretch",
         )
-        if not institution_summary.empty:
-            st.plotly_chart(
-                horizontal_bar(
-                    institution_summary,
-                    "categoria",
-                    "Instituciones y universidades",
-                    max_categories_chart,
-                ),
-                width="stretch",
-            )
-        else:
-            st.info("No hay instituciones para mostrar.")
+    else:
+        st.info("No hay áreas temáticas para mostrar.")
 
     with st.expander("Ejes temáticos"):
         if not eje_summary.empty:
@@ -745,6 +727,26 @@ with tabs[3]:
             )
 
 with tabs[4]:
+    st.subheader("Instituciones y universidades")
+    institution_summary = relation_summary(
+        relations.get("institucion", pd.DataFrame()),
+        df_filtered,
+        include_others,
+    )
+    if not institution_summary.empty:
+        st.plotly_chart(
+            horizontal_bar(
+                institution_summary,
+                "categoria",
+                "Publicaciones por institución o universidad",
+                max_categories_chart,
+            ),
+            width="stretch",
+        )
+    else:
+        st.info("No hay instituciones para mostrar.")
+
+with tabs[5]:
     st.subheader("Tabla exploratoria")
     visible_columns = [
         "General_ Título",

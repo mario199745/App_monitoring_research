@@ -39,6 +39,10 @@ territorial también funciona como filtro: permite seleccionar uno o varios
 departamentos, sincroniza la selección con `Región normalizada` y actualiza
 indicadores, gráficos, tabla y descargas.
 
+La navegación incluye una pestaña específica de `Instituciones`, separada de
+la sección temática, para consultar publicaciones por institución o
+universidad.
+
 ## Preparación
 
 ```powershell

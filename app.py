@@ -9,9 +9,6 @@ import plotly.express as px
 import streamlit as st
 
 
-# =========================
-# CONFIGURACION GENERAL
-# =========================
 st.set_page_config(
     page_title="Revisión bibliográfica DEI",
     layout="wide",
@@ -28,52 +25,81 @@ TERRITORIAL_MAP_SHEET = "MAPA_DEPARTAMENTOS"
 TERRITORIAL_EXPANDED_SHEET = "REGIONES_EXPANDIDAS"
 
 TYPE_COL = "TIPO_PUBLICACION_NORM"
-CATEGORY_COL = "Categoria_Tesis_Articulo"
 YEAR_COL = "General_ Año"
 REGION_COL = "REGION_NORM_SUGERIDA"
 UNIQUE_COL = "USAR_PARA_CONTEO_UNICO"
 MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
 RECORD_ID_COL = "ID_REGISTRO_ANALISIS"
 
-FILTER_COLUMNS = [
-    "Nombre de Base de datos",
-    "General_ Repositorio",
-    CATEGORY_COL,
+SIMPLE_FILTERS = [
+    ("Nombre de Base de datos", "Base de datos"),
+    (TYPE_COL, "Tipo de publicación"),
+    ("General_ Tipo de tesis Pre/Posgrado", "Nivel de tesis"),
+    ("General_ Idioma", "Idioma"),
+    ("General_ Publicación Nacional/Extranjera", "Ámbito de publicación"),
+    (
+        "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)",
+        "Disponibilidad",
+    ),
+]
+
+RELATION_CONFIG = {
+    "repositorio": {
+        "sheet": "DIM_REPOSITORIOS",
+        "source": "General_ Repositorio",
+        "label": "Repositorio",
+    },
+    "area": {
+        "sheet": "DIM_AREAS_TEMATICAS",
+        "source": "ANIFFS: Área Temática",
+        "label": "Área temática",
+    },
+    "eje": {
+        "sheet": "DIM_EJES_TEMATICOS",
+        "source": "ANIFFS: Eje Temático",
+        "label": "Eje temático",
+    },
+    "linea": {
+        "sheet": "DIM_LINEAS_INVESTIGACION",
+        "source": "ANIFFS: Linea de investigación",
+        "label": "Línea de investigación",
+    },
+    "region": {
+        "sheet": "DIM_REGIONES_NORMALIZADAS",
+        "source": REGION_COL,
+        "label": "Región normalizada",
+    },
+    "institucion": {
+        "sheet": "DIM_INSTITUCIONES",
+        "source": "General_ Institución/Universidad",
+        "label": "Institución / universidad",
+    },
+}
+
+REQUIRED_COLUMNS = [
     TYPE_COL,
-    "General_ Tipo de tesis Pre/Posgrado",
-    "General_ Institución/Universidad",
-    "General_ Idioma",
-    "General_ Publicación Nacional/Extranjera",
-    "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)",
-    REGION_COL,
-    "Ubicación_Provincia",
-    "Ubicación_Distrito",
-    "ANIFFS: Eje Temático",
-    "ANIFFS: Área Temática",
-    "ANIFFS: Linea de investigación",
+    YEAR_COL,
+    UNIQUE_COL,
+    MASTER_KEY_COL,
+    RECORD_ID_COL,
 ]
 
 
-# =========================
-# UTILIDADES
-# =========================
 def normalize_key(value) -> str:
     if pd.isna(value):
         return ""
-    text = str(value).strip().upper()
-    text = unicodedata.normalize("NFKD", text)
+    text = unicodedata.normalize("NFKD", str(value).strip().upper())
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    text = re.sub(r"\s+", " ", text)
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def latest_file(pattern: str) -> Path | None:
-    if not DATA_DIR.exists():
-        return None
-    files = [p for p in DATA_DIR.glob(pattern) if not p.name.startswith("~$")]
-    if not files:
-        return None
-    return max(files, key=lambda p: p.stat().st_mtime)
+    files = [
+        path
+        for path in DATA_DIR.glob(pattern)
+        if path.is_file() and not path.name.startswith("~$")
+    ]
+    return max(files, key=lambda path: path.stat().st_mtime) if files else None
 
 
 @st.cache_data(show_spinner=False)
@@ -82,15 +108,22 @@ def load_excel(path: str, sheet_name: str) -> pd.DataFrame:
 
 
 @st.cache_data(show_spinner=False)
+def workbook_sheets(path: str) -> list[str]:
+    return pd.ExcelFile(path, engine="openpyxl").sheet_names
+
+
+@st.cache_data(show_spinner=False)
 def load_geojson(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as file:
         geojson = json.load(file)
-
     for feature in geojson.get("features", []):
-        props = feature.setdefault("properties", {})
-        props["DEP_KEY"] = normalize_key(props.get("DEPARTAMEN"))
-
+        properties = feature.setdefault("properties", {})
+        properties["DEP_KEY"] = normalize_key(properties.get("DEPARTAMEN"))
     return geojson
+
+
+def non_empty_mask(series: pd.Series) -> pd.Series:
+    return series.notna() & series.astype(str).str.strip().ne("")
 
 
 def human_int(value) -> str:
@@ -100,93 +133,148 @@ def human_int(value) -> str:
         return str(value)
 
 
-def non_empty_mask(series: pd.Series) -> pd.Series:
-    return series.notna() & series.astype(str).str.strip().ne("")
+def clean_relation(
+    relation: pd.DataFrame,
+    include_others: bool = True,
+) -> pd.DataFrame:
+    if relation.empty:
+        return relation
+    result = relation.copy()
+    result[RECORD_ID_COL] = result[RECORD_ID_COL].astype(str)
+    result["categoria"] = result["categoria"].astype(str).str.strip()
+    result = result[result["categoria"].ne("")]
+    if not include_others:
+        result = result[result["categoria"].str.casefold().ne("otros")]
+    return result
 
 
-def chart_note(df_scope: pd.DataFrame, column: str, label: str) -> None:
+def visible_relation(
+    relation: pd.DataFrame,
+    df_scope: pd.DataFrame,
+    include_others: bool = True,
+) -> pd.DataFrame:
+    visible_ids = set(df_scope[RECORD_ID_COL].dropna().astype(str))
+    result = clean_relation(relation, include_others)
+    return result[result[RECORD_ID_COL].isin(visible_ids)].copy()
+
+
+def relation_summary(
+    relation: pd.DataFrame,
+    df_scope: pd.DataFrame,
+    include_others: bool,
+) -> pd.DataFrame:
+    visible = visible_relation(relation, df_scope, include_others)
+    if visible.empty:
+        return pd.DataFrame(columns=["categoria", "Publicaciones"])
+    return (
+        visible.groupby("categoria")[RECORD_ID_COL]
+        .nunique()
+        .sort_values(ascending=False)
+        .rename("Publicaciones")
+        .reset_index()
+    )
+
+
+def simple_summary(df_scope: pd.DataFrame, column: str) -> pd.DataFrame:
     if column not in df_scope.columns:
-        st.caption(f"No se encontro la columna {label}.")
+        return pd.DataFrame(columns=[column, "Publicaciones"])
+    work = df_scope.loc[non_empty_mask(df_scope[column]), [RECORD_ID_COL, column]].copy()
+    work[column] = work[column].astype(str).str.strip()
+    return (
+        work.groupby(column)[RECORD_ID_COL]
+        .nunique()
+        .sort_values(ascending=False)
+        .rename("Publicaciones")
+        .reset_index()
+    )
 
 
-def value_counts_table(df_scope: pd.DataFrame, column: str, value_name: str = "Publicaciones") -> pd.DataFrame:
-    if column not in df_scope.columns:
-        return pd.DataFrame(columns=[column, value_name])
-
-    work = df_scope.loc[non_empty_mask(df_scope[column]), column].astype(str).str.strip()
-    return work.value_counts().rename_axis(column).reset_index(name=value_name)
-
-
-def apply_filters(df_scope: pd.DataFrame, filter_columns: list[str]) -> pd.DataFrame:
+def apply_simple_filters(df_scope: pd.DataFrame) -> pd.DataFrame:
     filtered = df_scope.copy()
-    st.sidebar.markdown("## Filtros")
-
-    for col in filter_columns:
-        if col not in filtered.columns:
+    for column, label in SIMPLE_FILTERS:
+        if column not in filtered.columns:
             continue
-
-        values = filtered.loc[non_empty_mask(filtered[col]), col].astype(str).str.strip()
+        values = filtered.loc[non_empty_mask(filtered[column]), column].astype(str).str.strip()
         options = sorted(values.unique().tolist())
-        if not options:
-            continue
-
-        selected = st.sidebar.multiselect(
-            col,
-            options=options,
-            default=[],
-            key=f"filter_{col}",
-        )
+        selected = st.sidebar.multiselect(label, options, key=f"filter_{column}")
         if selected:
-            filtered = filtered[filtered[col].fillna("").astype(str).str.strip().isin(selected)]
-
+            filtered = filtered[
+                filtered[column].fillna("").astype(str).str.strip().isin(selected)
+            ]
     return filtered
 
 
-def filtered_expanded_regions(df_scope: pd.DataFrame, expanded_regions: pd.DataFrame) -> pd.DataFrame:
-    if RECORD_ID_COL not in df_scope.columns or RECORD_ID_COL not in expanded_regions.columns:
-        return expanded_regions.iloc[0:0].copy()
+def apply_relation_filters(
+    df_scope: pd.DataFrame,
+    relations: dict[str, pd.DataFrame],
+) -> pd.DataFrame:
+    filtered = df_scope.copy()
+    for key in ["repositorio", "region", "institucion", "eje", "area", "linea"]:
+        config = RELATION_CONFIG[key]
+        relation = relations.get(key, pd.DataFrame())
+        if relation.empty:
+            continue
+        available = visible_relation(relation, filtered, include_others=True)
+        options = sorted(available["categoria"].dropna().unique().tolist())
+        selected = st.sidebar.multiselect(
+            config["label"],
+            options,
+            key=f"relation_filter_{key}",
+        )
+        if selected:
+            selected_ids = set(
+                relation.loc[
+                    relation["categoria"].astype(str).str.strip().isin(selected),
+                    RECORD_ID_COL,
+                ].astype(str)
+            )
+            filtered = filtered[
+                filtered[RECORD_ID_COL].astype(str).isin(selected_ids)
+            ]
+    return filtered
 
+
+def filtered_expanded_regions(
+    df_scope: pd.DataFrame,
+    expanded_regions: pd.DataFrame,
+) -> pd.DataFrame:
     visible_ids = set(df_scope[RECORD_ID_COL].dropna().astype(str))
     expanded = expanded_regions.copy()
     expanded[RECORD_ID_COL] = expanded[RECORD_ID_COL].astype(str)
     return expanded[expanded[RECORD_ID_COL].isin(visible_ids)].copy()
 
 
-def build_department_summary(df_scope: pd.DataFrame, expanded_regions: pd.DataFrame, map_base: pd.DataFrame) -> pd.DataFrame:
+def department_summary(
+    df_scope: pd.DataFrame,
+    expanded_regions: pd.DataFrame,
+    map_base: pd.DataFrame,
+) -> pd.DataFrame:
     expanded = filtered_expanded_regions(df_scope, expanded_regions)
     expanded = expanded[expanded.get("DEP_EN_GEOJSON", False).astype(bool)].copy()
-
     if expanded.empty:
-        counts = pd.DataFrame(columns=["DEP_KEY"])
+        counts = pd.DataFrame(columns=["DEP_KEY", "Publicaciones"])
     else:
         counts = (
-            expanded.groupby("DEP_KEY", dropna=False)
-            .agg(
-                registros_territoriales=(RECORD_ID_COL, "count"),
-                publicaciones_bibliograficas=(MASTER_KEY_COL, "nunique"),
-            )
+            expanded.groupby("DEP_KEY")[RECORD_ID_COL]
+            .nunique()
+            .rename("Publicaciones")
             .reset_index()
         )
-
     summary = map_base[["IDDPTO", "DEPARTAMEN_GEO", "DEP_KEY", "CAPITAL"]].merge(
         counts,
         on="DEP_KEY",
         how="left",
     )
-    for col in ["registros_territoriales", "publicaciones_bibliograficas"]:
-        summary[col] = summary[col].fillna(0).astype(int)
-
+    summary["Publicaciones"] = summary["Publicaciones"].fillna(0).astype(int)
     return summary
 
 
-def territorial_note(df_scope: pd.DataFrame, expanded_regions: pd.DataFrame) -> None:
-    expanded = filtered_expanded_regions(df_scope, expanded_regions)
-    with_region = expanded.loc[expanded.get("DEP_EN_GEOJSON", False).astype(bool), RECORD_ID_COL].nunique()
-    st.caption(f"El mapa muestra {human_int(with_region)} publicaciones con departamento identificado.")
-
-
 @st.cache_data(show_spinner=False)
-def to_excel_bytes(df_main: pd.DataFrame, summary_type: pd.DataFrame, summary_region: pd.DataFrame) -> bytes:
+def to_excel_bytes(
+    df_main: pd.DataFrame,
+    summary_type: pd.DataFrame,
+    summary_region: pd.DataFrame,
+) -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_main.to_excel(writer, index=False, sheet_name="Datos_filtrados")
@@ -196,297 +284,328 @@ def to_excel_bytes(df_main: pd.DataFrame, summary_type: pd.DataFrame, summary_re
     return output.getvalue()
 
 
-# =========================
-# CARGA DE DATOS
-# =========================
+def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
+    plot_data = data.head(limit).sort_values("Publicaciones")
+    figure = px.bar(
+        plot_data,
+        x="Publicaciones",
+        y=category,
+        orientation="h",
+        text="Publicaciones",
+        title=title,
+        color_discrete_sequence=["#256d5b"],
+    )
+    figure.update_layout(
+        height=430,
+        showlegend=False,
+        xaxis_title="Publicaciones únicas",
+        yaxis_title="",
+        margin=dict(l=10, r=10, t=45, b=10),
+    )
+    return figure
+
+
 app_file = latest_file(APP_FILE_PATTERN)
 territorial_file = latest_file(TERRITORIAL_FILE_PATTERN)
 
-if app_file is None:
-    st.error(f"No se encontro un archivo {APP_FILE_PATTERN} en la carpeta data.")
-    st.stop()
-if territorial_file is None:
-    st.error(f"No se encontro un archivo {TERRITORIAL_FILE_PATTERN} en la carpeta data.")
+if app_file is None or territorial_file is None:
+    st.error(
+        "No se encontró el par de bases principal y territorial en la carpeta data."
+    )
     st.stop()
 if not GEOJSON_PATH.exists():
-    st.error(f"No se encontro el GeoJSON requerido: {GEOJSON_PATH}")
+    st.error(f"No se encontró el GeoJSON requerido: {GEOJSON_PATH}")
     st.stop()
 
 try:
     df = load_excel(str(app_file), APP_SHEET)
+    app_sheets = workbook_sheets(str(app_file))
     map_base = load_excel(str(territorial_file), TERRITORIAL_MAP_SHEET)
-    expanded_regions = load_excel(str(territorial_file), TERRITORIAL_EXPANDED_SHEET)
+    expanded_regions = load_excel(
+        str(territorial_file),
+        TERRITORIAL_EXPANDED_SHEET,
+    )
     peru_geojson = load_geojson(str(GEOJSON_PATH))
+    relations = {}
+    for key, config in RELATION_CONFIG.items():
+        if config["sheet"] in app_sheets:
+            relations[key] = clean_relation(
+                load_excel(str(app_file), config["sheet"]),
+                include_others=True,
+            )
+        else:
+            relations[key] = pd.DataFrame()
 except Exception as exc:
-    st.error(f"No se pudo cargar la informacion: {exc}")
+    st.error(f"No se pudo cargar la información: {exc}")
     st.stop()
 
-df.columns = [str(col).strip() for col in df.columns]
-
-required = [TYPE_COL, CATEGORY_COL, YEAR_COL, UNIQUE_COL, MASTER_KEY_COL, RECORD_ID_COL]
-missing = [col for col in required if col not in df.columns]
+df.columns = [str(column).strip() for column in df.columns]
+missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
 if missing:
     st.error("La base final no contiene columnas requeridas: " + ", ".join(missing))
     st.stop()
 
+df_mode = df.copy()
+df_mode[RECORD_ID_COL] = df_mode[RECORD_ID_COL].astype(str)
+if UNIQUE_COL in df_mode.columns:
+    df_mode = df_mode[
+        df_mode[UNIQUE_COL].fillna("").astype(str).str.upper().eq("SI")
+    ].copy()
 
-# =========================
-# INTERFAZ
-# =========================
+st.markdown(
+    """
+    <style>
+    .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
+    div[data-testid="stMetric"] {
+        background: #f5f8f7;
+        border: 1px solid #dbe7e3;
+        padding: 0.8rem;
+        border-radius: 0.7rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("Revisión bibliográfica DEI")
 st.caption(
-    "Explora publicaciones cientificas, tesis y articulos asociados a recursos forestales, "
-    "biodiversidad y temas afines. La consulta utiliza publicaciones unicas para facilitar "
-    "una lectura clara de los resultados."
+    "Explora publicaciones únicas sobre recursos forestales, biodiversidad y "
+    "fauna silvestre. Las categorías múltiples se contabilizan por separado."
 )
 
 with st.sidebar:
-    max_categories_chart = st.slider("Maximo de categorias en graficos", 5, 25, 12)
+    st.markdown("## Filtros")
+    max_categories_chart = st.slider("Categorías en gráficos", 5, 25, 12)
+    include_others = st.toggle("Incluir 'Otros' en gráficos", value=False)
+    st.caption(f"Base: {app_file.name}")
 
-df_mode = df.copy()
-if UNIQUE_COL in df_mode.columns:
-    df_mode = df_mode[df_mode[UNIQUE_COL].fillna("").astype(str).str.upper().eq("SI")].copy()
+df_filtered = apply_simple_filters(df_mode)
+df_filtered = apply_relation_filters(df_filtered, relations)
 
-available_filter_cols = [col for col in FILTER_COLUMNS if col in df_mode.columns]
-df_filtered = apply_filters(df_mode, available_filter_cols)
+type_summary = simple_summary(df_filtered, TYPE_COL)
+availability_col = (
+    "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)"
+)
+availability_summary = simple_summary(df_filtered, availability_col)
+region_summary = department_summary(df_filtered, expanded_regions, map_base)
 
-type_summary = value_counts_table(df_filtered, TYPE_COL)
-category_summary = value_counts_table(df_filtered, CATEGORY_COL)
-region_summary = build_department_summary(df_filtered, expanded_regions, map_base)
+repo_summary = relation_summary(
+    relations.get("repositorio", pd.DataFrame()),
+    df_filtered,
+    include_others,
+)
+area_summary = relation_summary(
+    relations.get("area", pd.DataFrame()),
+    df_filtered,
+    include_others,
+)
+eje_summary = relation_summary(
+    relations.get("eje", pd.DataFrame()),
+    df_filtered,
+    include_others,
+)
 
-unique_publications = df_filtered[MASTER_KEY_COL].nunique(dropna=True)
-regions_with_data = int((region_summary["registros_territoriales"] > 0).sum())
-years_numeric = pd.to_numeric(df_filtered[YEAR_COL], errors="coerce") if YEAR_COL in df_filtered.columns else pd.Series(dtype=float)
-year_min = int(years_numeric.min()) if len(years_numeric.dropna()) else None
-year_max = int(years_numeric.max()) if len(years_numeric.dropna()) else None
-period_label = f"{year_min}-{year_max}" if year_min and year_max else "Sin año"
-topic_col = "ANIFFS: Área Temática"
-institution_col = "General_ Institución/Universidad"
-repo_col = "General_ Repositorio"
+unique_publications = df_filtered[RECORD_ID_COL].nunique()
+regions_with_data = int(region_summary["Publicaciones"].gt(0).sum())
+years = pd.to_numeric(df_filtered[YEAR_COL], errors="coerce")
+period = (
+    f"{int(years.min())}-{int(years.max())}"
+    if years.notna().any()
+    else "Sin año"
+)
+area_count = int(area_summary["categoria"].nunique()) if not area_summary.empty else 0
+text_available = (
+    int(
+        df_filtered[availability_col]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("Texto disponible")
+        .sum()
+    )
+    if availability_col in df_filtered.columns
+    else 0
+)
 
-k1, k2, k3, k4, k5 = st.columns(5)
-with k1:
-    st.metric("Publicaciones revisadas", human_int(unique_publications))
-    with st.expander("Publicaciones revisadas"):
-        st.write("Cantidad de publicaciones unicas disponibles para la consulta.")
-with k2:
-    st.metric("Departamentos con datos", human_int(regions_with_data))
-    with st.expander("Departamentos con datos"):
-        st.write("Departamentos con publicaciones asociadas en la base territorial.")
-with k3:
-    st.metric("Periodo bibliografico", period_label)
-    with st.expander("Periodo bibliografico"):
-        st.write("Rango de años de publicacion identificado en las publicaciones filtradas.")
-with k4:
-    st.metric("Areas tematicas", human_int(df_filtered[topic_col].nunique(dropna=True) if topic_col in df_filtered.columns else 0))
-    with st.expander("Areas tematicas"):
-        st.write("Temas registrados en la clasificacion bibliografica.")
-with k5:
-    st.metric("Repositorios", human_int(df_filtered[repo_col].nunique(dropna=True) if repo_col in df_filtered.columns else 0))
-    with st.expander("Repositorios"):
-        st.write("Fuentes o repositorios desde los que se integraron las publicaciones.")
+metrics = st.columns(5)
+metrics[0].metric("Publicaciones", human_int(unique_publications))
+metrics[1].metric("Departamentos", human_int(regions_with_data))
+metrics[2].metric("Periodo", period)
+metrics[3].metric("Áreas temáticas", human_int(area_count))
+metrics[4].metric("Texto disponible", human_int(text_available))
+
+st.caption(
+    "Una publicación puede pertenecer a varias áreas, ejes, líneas, regiones "
+    "o repositorios; por ello, las categorías no son excluyentes."
+)
 
 tabs = st.tabs(["General", "Territorio", "Tiempo", "Temas", "Datos"])
 
 with tabs[0]:
-    st.subheader("Resumen bibliografico")
-    col_a, col_b, col_c = st.columns([1, 1, 1.2])
-
+    st.subheader("Resumen bibliográfico")
+    col_a, col_b, col_c = st.columns(3)
     with col_a:
-        st.markdown("#### Tipo de publicacion")
-        chart_note(df_filtered, TYPE_COL, "tipo de publicacion")
-        if len(type_summary):
-            fig_type = px.bar(
-                type_summary.head(max_categories_chart),
-                x=TYPE_COL,
-                y="Publicaciones",
-                color=TYPE_COL,
-                text="Publicaciones",
+        if not type_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    type_summary,
+                    TYPE_COL,
+                    "Tipo de publicación",
+                    max_categories_chart,
+                ),
+                width="stretch",
             )
-            fig_type.update_layout(
-                height=380,
-                xaxis_title="Tipo de publicacion",
-                yaxis_title="Publicaciones",
-                xaxis_tickangle=-25,
-                showlegend=False,
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            st.plotly_chart(fig_type, use_container_width=True)
         else:
             st.info("No hay datos para mostrar.")
-
     with col_b:
-        st.markdown("#### Categoria tesis/articulo")
-        chart_note(df_filtered, CATEGORY_COL, "categoria")
-        if len(category_summary):
-            fig_category = px.pie(
-                category_summary,
-                names=CATEGORY_COL,
+        if not availability_summary.empty:
+            figure = px.pie(
+                availability_summary,
+                names=availability_col,
                 values="Publicaciones",
-                hole=0.4,
+                hole=0.45,
+                title="Disponibilidad del contenido",
+                color_discrete_sequence=px.colors.sequential.Teal,
             )
-            fig_category.update_traces(textposition="inside", textinfo="percent+label")
-            fig_category.update_layout(height=380, showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
-            st.plotly_chart(fig_category, use_container_width=True)
+            figure.update_traces(textposition="inside", textinfo="percent+label")
+            figure.update_layout(height=430, showlegend=False)
+            st.plotly_chart(figure, width="stretch")
         else:
             st.info("No hay datos para mostrar.")
-
     with col_c:
-        st.markdown("#### Repositorios principales")
-        repo_summary = value_counts_table(df_filtered, repo_col)
-        chart_note(df_filtered, repo_col, "repositorio")
-        if len(repo_summary):
-            fig_repo = px.bar(
-                repo_summary.head(max_categories_chart),
-                x="Publicaciones",
-                y=repo_col,
-                orientation="h",
-                text="Publicaciones",
+        if not repo_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    repo_summary,
+                    "categoria",
+                    "Repositorios",
+                    max_categories_chart,
+                ),
+                width="stretch",
             )
-            fig_repo.update_layout(
-                height=380,
-                yaxis={"categoryorder": "total ascending"},
-                xaxis_title="Publicaciones",
-                yaxis_title="Repositorio",
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            st.plotly_chart(fig_repo, use_container_width=True)
         else:
-            st.info("No hay datos para mostrar.")
+            st.info("No hay relaciones de repositorio disponibles.")
 
 with tabs[1]:
-    st.subheader("Distribucion territorial")
-    territorial_note(df_filtered, expanded_regions)
-    map_metric = "publicaciones_bibliograficas"
-
+    st.subheader("Distribución territorial")
+    territorial_rows = filtered_expanded_regions(df_filtered, expanded_regions)
+    publications_with_department = territorial_rows.loc[
+        territorial_rows.get("DEP_EN_GEOJSON", False).astype(bool),
+        RECORD_ID_COL,
+    ].nunique()
+    st.caption(
+        f"El mapa representa {human_int(publications_with_department)} "
+        "publicaciones con departamento identificado."
+    )
     left_map, right_map = st.columns([1.35, 1])
     with left_map:
-        fig_map = px.choropleth(
+        map_figure = px.choropleth(
             region_summary,
             geojson=peru_geojson,
             locations="DEP_KEY",
             featureidkey="properties.DEP_KEY",
-            color=map_metric,
+            color="Publicaciones",
             hover_name="DEPARTAMEN_GEO",
-            hover_data={
-                "registros_territoriales": False,
-                "publicaciones_bibliograficas": True,
-                "DEP_KEY": False,
-                "IDDPTO": False,
-            },
+            hover_data={"DEP_KEY": False, "IDDPTO": False},
             color_continuous_scale="YlGnBu",
         )
-        fig_map.update_geos(fitbounds="locations", visible=False)
-        fig_map.update_layout(height=520, margin=dict(l=0, r=0, t=0, b=0))
-        st.plotly_chart(fig_map, use_container_width=True)
-
+        map_figure.update_geos(fitbounds="locations", visible=False)
+        map_figure.update_layout(height=520, margin=dict(l=0, r=0, t=0, b=0))
+        st.plotly_chart(map_figure, width="stretch")
     with right_map:
-        st.markdown("#### Departamentos principales")
-        top_regions = (
-            region_summary.sort_values(map_metric, ascending=False)
-            .head(max_categories_chart)
-            .rename(columns={"DEPARTAMEN_GEO": "Departamento", map_metric: "Publicaciones"})
-        )
-        fig_regions = px.bar(
-            top_regions,
-            x="Publicaciones",
-            y="Departamento",
-            orientation="h",
-            text="Publicaciones",
-        )
-        fig_regions.update_layout(
-            height=520,
-            yaxis={"categoryorder": "total ascending"},
-            xaxis_title="Publicaciones",
-            yaxis_title="Departamento",
-            margin=dict(l=10, r=10, t=10, b=10),
-        )
-        st.plotly_chart(fig_regions, use_container_width=True)
+        top_regions = region_summary.sort_values(
+            "Publicaciones", ascending=False
+        ).head(max_categories_chart)
+        if not top_regions.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    top_regions.rename(columns={"DEPARTAMEN_GEO": "Departamento"}),
+                    "Departamento",
+                    "Departamentos con más publicaciones",
+                    max_categories_chart,
+                ),
+                width="stretch",
+            )
 
 with tabs[2]:
-    if YEAR_COL in df_filtered.columns:
-        st.subheader("Evolucion temporal")
-        year_df = df_filtered.copy()
-        year_df[YEAR_COL] = pd.to_numeric(year_df[YEAR_COL], errors="coerce")
-        year_valid = year_df.dropna(subset=[YEAR_COL]).copy()
-        chart_note(df_filtered, YEAR_COL, "anio de publicacion")
-
-        if len(year_valid):
-            year_valid[YEAR_COL] = year_valid[YEAR_COL].astype(int)
-            temporal = (
-                year_valid.groupby([YEAR_COL, TYPE_COL], dropna=False)
-                .size()
-                .reset_index(name="Publicaciones")
-                .sort_values(YEAR_COL)
-            )
-            fig_time = px.line(
-                temporal,
-                x=YEAR_COL,
-                y="Publicaciones",
-                color=TYPE_COL,
-                markers=True,
-            )
-            fig_time.update_layout(
-                height=430,
-                xaxis_title="Anio",
-                yaxis_title="Publicaciones",
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            st.plotly_chart(fig_time, use_container_width=True)
-        else:
-            st.info("No hay publicaciones con anio valido.")
+    st.subheader("Evolución temporal")
+    temporal = df_filtered[[RECORD_ID_COL, YEAR_COL, TYPE_COL]].copy()
+    temporal[YEAR_COL] = pd.to_numeric(temporal[YEAR_COL], errors="coerce")
+    temporal = temporal.dropna(subset=[YEAR_COL])
+    if temporal.empty:
+        st.info("No hay publicaciones con año válido.")
+    else:
+        temporal[YEAR_COL] = temporal[YEAR_COL].astype(int)
+        temporal_summary = (
+            temporal.groupby([YEAR_COL, TYPE_COL])[RECORD_ID_COL]
+            .nunique()
+            .rename("Publicaciones")
+            .reset_index()
+        )
+        time_figure = px.line(
+            temporal_summary,
+            x=YEAR_COL,
+            y="Publicaciones",
+            color=TYPE_COL,
+            markers=True,
+        )
+        time_figure.update_layout(
+            height=450,
+            xaxis_title="Año",
+            yaxis_title="Publicaciones únicas",
+        )
+        st.plotly_chart(time_figure, width="stretch")
 
 with tabs[3]:
+    st.subheader("Temas e instituciones")
     topic_left, topic_right = st.columns(2)
     with topic_left:
-        st.subheader("Areas tematicas")
-        chart_note(df_filtered, topic_col, "area tematica")
-        topic_summary = value_counts_table(df_filtered, topic_col)
-        if len(topic_summary):
-            fig_topic = px.bar(
-                topic_summary.head(max_categories_chart),
-                x="Publicaciones",
-                y=topic_col,
-                orientation="h",
-                text="Publicaciones",
+        if not area_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    area_summary,
+                    "categoria",
+                    "Publicaciones vinculadas por área temática",
+                    max_categories_chart,
+                ),
+                width="stretch",
             )
-            fig_topic.update_layout(
-                height=430,
-                yaxis={"categoryorder": "total ascending"},
-                xaxis_title="Publicaciones",
-                yaxis_title="Area tematica",
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            st.plotly_chart(fig_topic, use_container_width=True)
         else:
-            st.info("No hay datos para mostrar.")
-
+            st.info("No hay áreas temáticas para mostrar.")
     with topic_right:
-        st.subheader("Instituciones y universidades")
-        chart_note(df_filtered, institution_col, "institucion o universidad")
-        institution_summary = value_counts_table(df_filtered, institution_col)
-        if len(institution_summary):
-            fig_institution = px.bar(
-                institution_summary.head(max_categories_chart),
-                x="Publicaciones",
-                y=institution_col,
-                orientation="h",
-                text="Publicaciones",
+        institution_summary = relation_summary(
+            relations.get("institucion", pd.DataFrame()),
+            df_filtered,
+            include_others,
+        )
+        if not institution_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    institution_summary,
+                    "categoria",
+                    "Instituciones y universidades",
+                    max_categories_chart,
+                ),
+                width="stretch",
             )
-            fig_institution.update_layout(
-                height=430,
-                yaxis={"categoryorder": "total ascending"},
-                xaxis_title="Publicaciones",
-                yaxis_title="Institucion / universidad",
-                margin=dict(l=10, r=10, t=10, b=10),
-            )
-            st.plotly_chart(fig_institution, use_container_width=True)
         else:
-            st.info("No hay datos para mostrar.")
+            st.info("No hay instituciones para mostrar.")
+
+    with st.expander("Ejes temáticos"):
+        if not eje_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    eje_summary,
+                    "categoria",
+                    "Publicaciones vinculadas por eje temático",
+                    max_categories_chart,
+                ),
+                width="stretch",
+            )
 
 with tabs[4]:
     st.subheader("Tabla exploratoria")
-    default_columns = [
+    visible_columns = [
         "General_ Título",
         "General_ Autor(es)",
         YEAR_COL,
@@ -494,29 +613,41 @@ with tabs[4]:
         REGION_COL,
         "General_ Institución/Universidad",
         "General_ Repositorio",
-        "URL_PRINCIPAL_DETECTADA",
+        "DOI_NORM",
+        "General_ Enlace",
     ]
-    visible_columns = [col for col in default_columns if col in df_filtered.columns]
-    st.dataframe(df_filtered[visible_columns].head(500), use_container_width=True, height=380)
-    st.caption("La tabla muestra hasta 500 publicaciones para mantener una navegacion fluida.")
+    visible_columns = [column for column in visible_columns if column in df_filtered]
+    st.dataframe(
+        df_filtered[visible_columns].head(500),
+        width="stretch",
+        height=400,
+        hide_index=True,
+    )
+    st.caption(
+        "La tabla muestra hasta 500 registros. Las descargas contienen todos "
+        "los registros resultantes de los filtros."
+    )
 
     excel_bytes = to_excel_bytes(df_filtered, type_summary, region_summary)
     csv_bytes = df_filtered.to_csv(index=False).encode("utf-8-sig")
+    download_a, download_b = st.columns(2)
+    download_a.download_button(
+        "Descargar Excel filtrado",
+        data=excel_bytes,
+        file_name="BD_app_filtrada.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+    )
+    download_b.download_button(
+        "Descargar CSV filtrado",
+        data=csv_bytes,
+        file_name="BD_app_filtrada.csv",
+        mime="text/csv",
+        width="stretch",
+    )
 
-    d1, d2 = st.columns(2)
-    with d1:
-        st.download_button(
-            "Descargar Excel filtrado",
-            data=excel_bytes,
-            file_name="BD_app_filtrada.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    with d2:
-        st.download_button(
-            "Descargar CSV filtrado",
-            data=csv_bytes,
-            file_name="BD_app_filtrada.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+st.divider()
+st.caption(
+    f"Fuente principal: {app_file.name} · Fuente territorial: "
+    f"{territorial_file.name}"
+)

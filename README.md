@@ -18,6 +18,18 @@ La interfaz presenta `Otros` por defecto, utiliza nombres documentales sin
 prefijos numéricos y cuenta **6,217 publicaciones consolidadas**. Los 6,574
 registros bibliográficos de origen permanecen disponibles para auditoría.
 
+Al seleccionar `Tesis`, se habilitan filtros públicos separados para
+`Grado académico` y `Nivel académico`. La categoría técnica `No aplica` no se
+muestra en estos filtros.
+
+El tipo público se organiza en `Artículo` y `Tesis`. Al seleccionar
+`Artículo`, se habilita el subtipo `Artículo científico` o
+`Artículo de conferencia`.
+
+La disponibilidad del contenido se conserva en la base para auditoría, pero no
+se presenta como filtro público porque no equivale necesariamente a acceso
+abierto.
+
 ## Preparación
 
 ```powershell

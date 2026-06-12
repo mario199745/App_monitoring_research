@@ -24,22 +24,21 @@ TERRITORIAL_FILE_PATTERN = "BD_APP_TERRITORIAL_*.xlsx"
 TERRITORIAL_MAP_SHEET = "MAPA_DEPARTAMENTOS"
 TERRITORIAL_EXPANDED_SHEET = "REGIONES_EXPANDIDAS"
 
-TYPE_COL = "TIPO_PUBLICACION_NORM"
+SOURCE_TYPE_COL = "TIPO_PUBLICACION_NORM"
+TYPE_COL = "TIPO_PUBLICACION_PUBLICO"
+SUBTYPE_COL = "SUBTIPO_PUBLICACION_PUBLICO"
 YEAR_COL = "General_ Año"
 REGION_COL = "REGION_NORM_SUGERIDA"
+ACADEMIC_GRADE_COL = "GRADO_ACADEMICO_PUBLICO"
+ACADEMIC_LEVEL_COL = "NIVEL_ACADEMICO_PUBLICO"
 UNIQUE_COL = "USAR_PARA_CONTEO_UNICO"
 MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
 RECORD_ID_COL = "ID_PUBLICACION_PROPUESTA"
 
 SIMPLE_FILTERS = [
     (TYPE_COL, "Tipo de publicación"),
-    ("General_ Tipo de tesis Pre/Posgrado", "Nivel de tesis"),
     ("General_ Idioma", "Idioma"),
     ("General_ Publicación Nacional/Extranjera", "Ámbito de publicación"),
-    (
-        "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)",
-        "Disponibilidad",
-    ),
 ]
 
 RELATION_CONFIG = {
@@ -193,15 +192,61 @@ def simple_summary(df_scope: pd.DataFrame, column: str) -> pd.DataFrame:
 
 def apply_simple_filters(df_scope: pd.DataFrame) -> pd.DataFrame:
     filtered = df_scope.copy()
+    selected_types = []
     for column, label in SIMPLE_FILTERS:
         if column not in filtered.columns:
             continue
         values = filtered.loc[non_empty_mask(filtered[column]), column].astype(str).str.strip()
         options = sorted(values.unique().tolist())
         selected = st.sidebar.multiselect(label, options, key=f"filter_{column}")
+        if column == TYPE_COL:
+            selected_types = selected
         if selected:
             filtered = filtered[
                 filtered[column].fillna("").astype(str).str.strip().isin(selected)
+            ]
+    if "Tesis" in selected_types:
+        for column, label in [
+            (ACADEMIC_GRADE_COL, "Grado académico"),
+            (ACADEMIC_LEVEL_COL, "Nivel académico"),
+        ]:
+            values = (
+                filtered.loc[non_empty_mask(filtered[column]), column]
+                .astype(str)
+                .str.strip()
+            )
+            options = sorted(values.unique().tolist())
+            selected = st.sidebar.multiselect(
+                label,
+                options,
+                key=f"filter_{column}",
+            )
+            if selected:
+                filtered = filtered[
+                    filtered[column]
+                    .fillna("")
+                    .astype(str)
+                    .str.strip()
+                    .isin(selected)
+                ]
+    if "Artículo" in selected_types:
+        values = (
+            filtered.loc[non_empty_mask(filtered[SUBTYPE_COL]), SUBTYPE_COL]
+            .astype(str)
+            .str.strip()
+        )
+        selected = st.sidebar.multiselect(
+            "Subtipo de artículo",
+            sorted(values.unique().tolist()),
+            key=f"filter_{SUBTYPE_COL}",
+        )
+        if selected:
+            filtered = filtered[
+                filtered[SUBTYPE_COL]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+                .isin(selected)
             ]
     return filtered
 
@@ -613,6 +658,7 @@ with tabs[4]:
         RECORD_ID_COL,
         YEAR_COL,
         TYPE_COL,
+        SUBTYPE_COL,
         REGION_COL,
         "General_ Institución/Universidad",
         "General_ Repositorio",

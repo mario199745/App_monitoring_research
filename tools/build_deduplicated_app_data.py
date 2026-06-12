@@ -11,6 +11,11 @@ RECORD_ID = "ID_REGISTRO_ANALISIS"
 PUBLICATION_ID = "ID_PUBLICACION_PROPUESTA"
 REPRESENTATIVE_ID = "ID_REGISTRO_REPRESENTATIVO"
 MASTER_KEY = "CLAVE_BIBLIOGRAFICA_MASTER"
+ACADEMIC_SOURCE = "General_ Tipo de tesis Pre/Posgrado"
+ACADEMIC_GRADE = "GRADO_ACADEMICO_PUBLICO"
+ACADEMIC_LEVEL = "NIVEL_ACADEMICO_PUBLICO"
+PUBLIC_TYPE = "TIPO_PUBLICACION_PUBLICO"
+PUBLIC_SUBTYPE = "SUBTIPO_PUBLICACION_PUBLICO"
 
 DIMENSION_SHEETS = [
     "DIM_REPOSITORIOS",
@@ -126,6 +131,15 @@ def build_publications(
         columns=["Nombre de Base de datos"]
     ).merge(databases, on=PUBLICATION_ID, how="left", validate="one_to_one")
     publications["USAR_PARA_CONTEO_UNICO"] = "SI"
+    publications[PUBLIC_TYPE] = publications["TIPO_PUBLICACION_NORM"].replace(
+        {"Artículo de conferencia": "Artículo"}
+    )
+    publications[PUBLIC_SUBTYPE] = publications["TIPO_PUBLICACION_NORM"].map(
+        {
+            "Artículo": "Artículo científico",
+            "Artículo de conferencia": "Artículo de conferencia",
+        }
+    )
 
     front = [
         PUBLICATION_ID,
@@ -138,6 +152,82 @@ def build_publications(
     return publications[front + remaining].sort_values(
         PUBLICATION_ID
     ).reset_index(drop=True)
+
+
+def derive_academic_fields(
+    source: pd.DataFrame,
+    mapping: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    work = source[
+        [RECORD_ID, "TIPO_PUBLICACION_NORM", ACADEMIC_SOURCE]
+    ].merge(
+        mapping[[RECORD_ID, PUBLICATION_ID]],
+        on=RECORD_ID,
+        how="inner",
+        validate="one_to_one",
+    )
+    thesis = work[work["TIPO_PUBLICACION_NORM"].eq("Tesis")].copy()
+    rows = []
+    audit = []
+
+    for publication_id, group in thesis.groupby(PUBLICATION_ID):
+        values = sorted(
+            {
+                str(value).strip()
+                for value in group[ACADEMIC_SOURCE].dropna()
+                if str(value).strip() and str(value).strip() != "No aplica"
+            }
+        )
+        value_set = set(values)
+        if "Doctorado" in value_set:
+            grade, level = "Posgrado", "Doctorado"
+        elif "Maestría" in value_set:
+            grade, level = "Posgrado", "Maestría"
+        elif "Suficiencia profesional" in value_set:
+            grade, level = "Pregrado", "Suficiencia profesional"
+        elif "Pregrado" in value_set:
+            grade, level = "Pregrado", "Pregrado"
+        elif "Posgrado no especificado" in value_set:
+            grade, level = "Posgrado", "Otros"
+        else:
+            grade, level = "Otros", "Otros"
+
+        rows.append(
+            {
+                PUBLICATION_ID: publication_id,
+                ACADEMIC_GRADE: grade,
+                ACADEMIC_LEVEL: level,
+            }
+        )
+        if len(values) > 1:
+            broad_grades = {
+                "Pregrado"
+                if value in {"Pregrado", "Suficiencia profesional"}
+                else "Posgrado"
+                if value in {
+                    "Maestría",
+                    "Doctorado",
+                    "Posgrado no especificado",
+                }
+                else "Otros"
+                for value in values
+            }
+            audit.append(
+                {
+                    PUBLICATION_ID: publication_id,
+                    "VALORES_ORIGEN": " | ".join(values),
+                    ACADEMIC_GRADE: grade,
+                    ACADEMIC_LEVEL: level,
+                    "TIPO_CONFLICTO": (
+                        "grados_contradictorios"
+                        if {"Pregrado", "Posgrado"}.issubset(broad_grades)
+                        else "niveles_multiples"
+                    ),
+                    "REGLA": "Priorizar el nivel académico más específico.",
+                }
+            )
+
+    return pd.DataFrame(rows), pd.DataFrame(audit)
 
 
 def remap_dimension(
@@ -317,6 +407,13 @@ def main() -> None:
     dimensions["DIM_BASES_DOCUMENTALES"] = database_dimension(source, mapping)
 
     publications = build_publications(source, mapping)
+    academic_fields, academic_audit = derive_academic_fields(source, mapping)
+    publications = publications.merge(
+        academic_fields,
+        on=PUBLICATION_ID,
+        how="left",
+        validate="one_to_one",
+    )
     territorial_sheets = consolidate_territorial(territorial_source, mapping)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -334,6 +431,16 @@ def main() -> None:
             {"indicador": "publicaciones_consolidadas", "valor": len(publications)},
             {"indicador": "registros_redundantes", "valor": len(source) - len(publications)},
             {"indicador": "decisiones_revisadas", "valor": len(decisions)},
+            {"indicador": "tesis_con_campos_academicos", "valor": len(academic_fields)},
+            {"indicador": "conflictos_academicos_auditados", "valor": len(academic_audit)},
+            {
+                "indicador": "articulos_de_conferencia",
+                "valor": int(
+                    publications[PUBLIC_SUBTYPE]
+                    .eq("Artículo de conferencia")
+                    .sum()
+                ),
+            },
         ]
     )
     contract = pd.DataFrame(
@@ -342,6 +449,7 @@ def main() -> None:
             {"hoja": "REGISTROS_ORIGEN", "proposito": "Registros homologados sin eliminación", "clave": RECORD_ID},
             {"hoja": "REGISTRO_PUBLICACION", "proposito": "Relación auditable registro-publicación", "clave": RECORD_ID},
             {"hoja": "DECISIONES_REVISADAS", "proposito": "Adjudicación de los 72 pares", "clave": "id_registro_a + id_registro_b"},
+            {"hoja": "AUDITORIA_ACADEMICA", "proposito": "Combinaciones académicas resueltas", "clave": PUBLICATION_ID},
             *[
                 {
                     "hoja": sheet,
@@ -358,6 +466,9 @@ def main() -> None:
         source.to_excel(writer, sheet_name="REGISTROS_ORIGEN", index=False)
         mapping.to_excel(writer, sheet_name="REGISTRO_PUBLICACION", index=False)
         decisions.to_excel(writer, sheet_name="DECISIONES_REVISADAS", index=False)
+        academic_audit.to_excel(
+            writer, sheet_name="AUDITORIA_ACADEMICA", index=False
+        )
         for sheet, dimension in dimensions.items():
             dimension.to_excel(writer, sheet_name=sheet, index=False)
         summary.to_excel(writer, sheet_name="RESUMEN_ADAPTACION", index=False)
@@ -390,6 +501,8 @@ def main() -> None:
 - **Publicaciones consolidadas:** {len(publications):,}
 - **Registros redundantes consolidados:** {len(source) - len(publications):,}
 - **Decisiones revisadas:** {len(decisions):,}
+- **Tesis con clasificación académica pública:** {len(academic_fields):,}
+- **Combinaciones académicas auditadas:** {len(academic_audit):,}
 
 ## Contrato
 
@@ -398,6 +511,14 @@ def main() -> None:
 - `REGISTRO_PUBLICACION` permite reconstruir cada agrupación.
 - Las dimensiones y la base territorial cuentan publicaciones consolidadas.
 - Las bases documentales se conservan como una relación multivaluada.
+- `GRADO_ACADEMICO_PUBLICO` muestra `Pregrado`, `Posgrado` u `Otros`.
+- `NIVEL_ACADEMICO_PUBLICO` muestra `Pregrado`, `Maestría`, `Doctorado`,
+  `Suficiencia profesional` u `Otros`.
+- `No aplica` no se expone en los campos académicos públicos.
+- `AUDITORIA_ACADEMICA` conserva las combinaciones de origen resueltas.
+- `TIPO_PUBLICACION_PUBLICO` presenta únicamente `Artículo` y `Tesis`.
+- `SUBTIPO_PUBLICACION_PUBLICO` distingue `Artículo científico` y
+  `Artículo de conferencia`; no se aplica a tesis.
 - Los archivos fuente no fueron modificados.
 """,
         encoding="utf-8",

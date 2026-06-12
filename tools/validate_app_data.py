@@ -9,8 +9,12 @@ MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
 
 REQUIRED_MAIN_COLUMNS = [
     "TIPO_PUBLICACION_NORM",
+    "TIPO_PUBLICACION_PUBLICO",
+    "SUBTIPO_PUBLICACION_PUBLICO",
     "General_ Año",
     "USAR_PARA_CONTEO_UNICO",
+    "GRADO_ACADEMICO_PUBLICO",
+    "NIVEL_ACADEMICO_PUBLICO",
     RECORD_ID_COL,
 ]
 
@@ -56,6 +60,7 @@ def main() -> None:
             "REGISTROS_ORIGEN",
             "REGISTRO_PUBLICACION",
             "DECISIONES_REVISADAS",
+            "AUDITORIA_ACADEMICA",
             *REQUIRED_DIMENSIONS,
         ]
         if sheet not in app_xl.sheet_names
@@ -90,6 +95,44 @@ def main() -> None:
         raise AssertionError(
             f"Se esperaban 6,217 publicaciones consolidadas y se obtuvieron {len(df)}."
         )
+    if set(df["TIPO_PUBLICACION_PUBLICO"].dropna()) != {"Artículo", "Tesis"}:
+        raise AssertionError("TIPO_PUBLICACION_PUBLICO no cumple la jerarquía.")
+    allowed_subtypes = {"Artículo científico", "Artículo de conferencia"}
+    article_rows = df["TIPO_PUBLICACION_PUBLICO"].eq("Artículo")
+    if not set(
+        df.loc[article_rows, "SUBTIPO_PUBLICACION_PUBLICO"].dropna()
+    ).issubset(allowed_subtypes):
+        raise AssertionError("SUBTIPO_PUBLICACION_PUBLICO contiene valores inválidos.")
+    if df.loc[
+        ~article_rows, "SUBTIPO_PUBLICACION_PUBLICO"
+    ].notna().any():
+        raise AssertionError("Las tesis contienen subtipo de artículo.")
+    conference_count = int(
+        df["SUBTIPO_PUBLICACION_PUBLICO"].eq("Artículo de conferencia").sum()
+    )
+    if conference_count != 5:
+        raise AssertionError(
+            f"Se esperaban 5 artículos de conferencia y se obtuvieron {conference_count}."
+        )
+    non_thesis = df["TIPO_PUBLICACION_NORM"].ne("Tesis")
+    if df.loc[
+        non_thesis,
+        ["GRADO_ACADEMICO_PUBLICO", "NIVEL_ACADEMICO_PUBLICO"],
+    ].notna().any().any():
+        raise AssertionError("Las publicaciones no tesis tienen nivel académico público.")
+    allowed_grade = {"Pregrado", "Posgrado", "Otros"}
+    allowed_level = {
+        "Pregrado",
+        "Maestría",
+        "Doctorado",
+        "Suficiencia profesional",
+        "Otros",
+    }
+    thesis = df[df["TIPO_PUBLICACION_NORM"].eq("Tesis")]
+    if not set(thesis["GRADO_ACADEMICO_PUBLICO"].dropna()).issubset(allowed_grade):
+        raise AssertionError("GRADO_ACADEMICO_PUBLICO contiene valores inválidos.")
+    if not set(thesis["NIVEL_ACADEMICO_PUBLICO"].dropna()).issubset(allowed_level):
+        raise AssertionError("NIVEL_ACADEMICO_PUBLICO contiene valores inválidos.")
     database_names = (
         df["Nombre de Base de datos"].dropna().astype(str).str.strip()
     )

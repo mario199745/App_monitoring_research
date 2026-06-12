@@ -74,6 +74,34 @@ REQUIRED_APP_COLUMNS = [
 ]
 
 
+def normalize_database_name(value):
+    if pd.isna(value):
+        return value
+    text = re.sub(r"\s+", " ", str(value)).strip()
+    text = re.sub(r"^\d+\.\s*", "", text)
+    replacements = {
+        "Base estado del arte algarrobo": "Base estado del arte Algarrobo",
+        "Base producción cientifica algarrobo": (
+            "Base producción científica Algarrobo"
+        ),
+        "Base producción cientifica Amazonas": (
+            "Base producción científica Amazonas"
+        ),
+        "Condor": "Cóndor",
+        "Diagnostico Junin": "Diagnóstico Junín",
+        "Diagnostico Madre de Dios": "Diagnóstico Madre de Dios",
+        "Diagnostico Moquegua": "Diagnóstico Moquegua",
+        "Diagnostico Puno": "Diagnóstico Puno",
+        "Producción Cientifica AN,HU,PA,SM,CA": (
+            "Producción científica AN, HU, PA, SM, CA"
+        ),
+        "Producción científica shihuahuaco": (
+            "Producción científica Shihuahuaco"
+        ),
+    }
+    return replacements.get(text, text)
+
+
 def latest_directory(path: Path, pattern: str) -> Path:
     directories = [item for item in path.glob(pattern) if item.is_dir()]
     if not directories:
@@ -277,6 +305,15 @@ def main() -> None:
     if df[RECORD_ID_COL].isna().any() or not df[RECORD_ID_COL].is_unique:
         raise ValueError(f"{RECORD_ID_COL} debe ser completo y único.")
 
+    database_column = "Nombre de Base de datos"
+    database_names_original = df[database_column].copy()
+    df[database_column] = df[database_column].map(normalize_database_name)
+    normalized_database_rows = int(
+        database_names_original.fillna("").astype(str)
+        .ne(df[database_column].fillna("").astype(str))
+        .sum()
+    )
+
     dimensions = {
         sheet: canonicalize_by_frequency(build_dimension(df, column, pattern))
         for sheet, (column, pattern) in DIMENSION_RULES.items()
@@ -308,6 +345,7 @@ def main() -> None:
         {"indicador": "campos_base_principal", "valor": len(df.columns)},
         {"indicador": "identificadores_unicos", "valor": df[RECORD_ID_COL].nunique()},
         {"indicador": "publicaciones_bibliograficas", "valor": df[MASTER_KEY_COL].nunique()},
+        {"indicador": "nombres_base_normalizados", "valor": normalized_database_rows},
     ]
     for sheet, dimension in dimensions.items():
         summary_rows.append(
@@ -397,6 +435,7 @@ def main() -> None:
 - **Registros:** {len(df):,}
 - **Campos principales:** {len(df.columns)}
 - **Identificadores únicos:** {df[RECORD_ID_COL].nunique():,}
+- **Nombres de base normalizados:** {normalized_database_rows:,}
 
 ## Dimensiones relacionales
 
@@ -412,6 +451,8 @@ def main() -> None:
 
 - La hoja `BD_APP` conserva el contrato de 42 campos requerido por el aplicativo.
 - Las dimensiones expandidas evitan contar combinaciones como categorías únicas.
+- Los prefijos numéricos de `Nombre de Base de datos` se retiran en la base
+  adaptada para presentación; la base homologada conserva el valor de origen.
 - `Otros` representa información ausente o no especificada.
 - `No aplica` se conserva como estado distinto.
 - Los archivos fuente no fueron modificados.

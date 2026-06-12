@@ -79,6 +79,17 @@ def main() -> None:
         raise AssertionError(f"Columnas faltantes: {missing_columns}")
     if df[RECORD_ID_COL].isna().any() or not df[RECORD_ID_COL].is_unique:
         raise AssertionError(f"{RECORD_ID_COL} no es una clave primaria válida.")
+    database_names = (
+        df["Nombre de Base de datos"].dropna().astype(str).str.strip()
+    )
+    numbered_database_names = database_names[
+        database_names.str.match(r"^\d+\.\s*")
+    ].unique()
+    if len(numbered_database_names):
+        raise AssertionError(
+            "Persisten prefijos numéricos en Nombre de Base de datos: "
+            + ", ".join(sorted(numbered_database_names))
+        )
 
     ids = set(df[RECORD_ID_COL].astype(str))
     for sheet in REQUIRED_DIMENSIONS:

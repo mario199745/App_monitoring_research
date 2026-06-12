@@ -209,7 +209,7 @@ def apply_relation_filters(
     relations: dict[str, pd.DataFrame],
 ) -> pd.DataFrame:
     filtered = df_scope.copy()
-    for key in ["repositorio", "region", "institucion", "eje", "area", "linea"]:
+    for key in ["repositorio", "region", "institucion", "eje", "area"]:
         config = RELATION_CONFIG[key]
         relation = relations.get(key, pd.DataFrame())
         if relation.empty:
@@ -298,7 +298,7 @@ def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
     figure.update_layout(
         height=430,
         showlegend=False,
-        xaxis_title="Publicaciones únicas",
+        xaxis_title="Publicaciones",
         yaxis_title="",
         margin=dict(l=10, r=10, t=45, b=10),
     )
@@ -369,24 +369,21 @@ st.markdown(
 
 st.title("Revisión bibliográfica DEI")
 st.caption(
-    "Explora publicaciones únicas sobre recursos forestales, biodiversidad y "
+    "Explora publicaciones sobre recursos forestales, biodiversidad y "
     "fauna silvestre. Las categorías múltiples se contabilizan por separado."
 )
 
 with st.sidebar:
     st.markdown("## Filtros")
     max_categories_chart = st.slider("Categorías en gráficos", 5, 25, 12)
-    include_others = st.toggle("Incluir 'Otros' en gráficos", value=False)
+    include_others = st.toggle("Mostrar 'Otros' en gráficos", value=True)
     st.caption(f"Base: {app_file.name}")
 
 df_filtered = apply_simple_filters(df_mode)
 df_filtered = apply_relation_filters(df_filtered, relations)
 
 type_summary = simple_summary(df_filtered, TYPE_COL)
-availability_col = (
-    "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)"
-)
-availability_summary = simple_summary(df_filtered, availability_col)
+database_summary = simple_summary(df_filtered, "Nombre de Base de datos")
 region_summary = department_summary(df_filtered, expanded_regions, map_base)
 
 repo_summary = relation_summary(
@@ -413,26 +410,28 @@ period = (
     if years.notna().any()
     else "Sin año"
 )
-area_count = int(area_summary["categoria"].nunique()) if not area_summary.empty else 0
-text_available = (
+area_count = (
     int(
-        df_filtered[availability_col]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-        .eq("Texto disponible")
-        .sum()
+        area_summary.loc[
+            area_summary["categoria"].astype(str).str.casefold().ne("otros"),
+            "categoria",
+        ].nunique()
     )
-    if availability_col in df_filtered.columns
+    if not area_summary.empty
+    else 0
+)
+database_count = (
+    int(df_filtered["Nombre de Base de datos"].dropna().astype(str).nunique())
+    if "Nombre de Base de datos" in df_filtered.columns
     else 0
 )
 
 metrics = st.columns(5)
 metrics[0].metric("Publicaciones", human_int(unique_publications))
 metrics[1].metric("Departamentos", human_int(regions_with_data))
-metrics[2].metric("Periodo", period)
+metrics[2].metric("Periodo de publicación/aprobación", period)
 metrics[3].metric("Áreas temáticas", human_int(area_count))
-metrics[4].metric("Texto disponible", human_int(text_available))
+metrics[4].metric("Bases documentales", human_int(database_count))
 
 st.caption(
     "Una publicación puede pertenecer a varias áreas, ejes, líneas, regiones "
@@ -458,18 +457,16 @@ with tabs[0]:
         else:
             st.info("No hay datos para mostrar.")
     with col_b:
-        if not availability_summary.empty:
-            figure = px.pie(
-                availability_summary,
-                names=availability_col,
-                values="Publicaciones",
-                hole=0.45,
-                title="Disponibilidad del contenido",
-                color_discrete_sequence=px.colors.sequential.Teal,
+        if not database_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    database_summary,
+                    "Nombre de Base de datos",
+                    "Publicaciones por base documental",
+                    max_categories_chart,
+                ),
+                width="stretch",
             )
-            figure.update_traces(textposition="inside", textinfo="percent+label")
-            figure.update_layout(height=430, showlegend=False)
-            st.plotly_chart(figure, width="stretch")
         else:
             st.info("No hay datos para mostrar.")
     with col_c:
@@ -497,35 +494,33 @@ with tabs[1]:
         f"El mapa representa {human_int(publications_with_department)} "
         "publicaciones con departamento identificado."
     )
-    left_map, right_map = st.columns([1.35, 1])
-    with left_map:
-        map_figure = px.choropleth(
-            region_summary,
-            geojson=peru_geojson,
-            locations="DEP_KEY",
-            featureidkey="properties.DEP_KEY",
-            color="Publicaciones",
-            hover_name="DEPARTAMEN_GEO",
-            hover_data={"DEP_KEY": False, "IDDPTO": False},
-            color_continuous_scale="YlGnBu",
+    map_figure = px.choropleth(
+        region_summary,
+        geojson=peru_geojson,
+        locations="DEP_KEY",
+        featureidkey="properties.DEP_KEY",
+        color="Publicaciones",
+        hover_name="DEPARTAMEN_GEO",
+        hover_data={"DEP_KEY": False, "IDDPTO": False},
+        color_continuous_scale="YlGnBu",
+    )
+    map_figure.update_geos(fitbounds="locations", visible=False)
+    map_figure.update_layout(height=680, margin=dict(l=0, r=0, t=0, b=0))
+    st.plotly_chart(map_figure, width="stretch")
+
+    top_regions = region_summary.sort_values(
+        "Publicaciones", ascending=False
+    ).head(max_categories_chart)
+    if not top_regions.empty:
+        st.plotly_chart(
+            horizontal_bar(
+                top_regions.rename(columns={"DEPARTAMEN_GEO": "Departamento"}),
+                "Departamento",
+                "Departamentos con más publicaciones",
+                max_categories_chart,
+            ),
+            width="stretch",
         )
-        map_figure.update_geos(fitbounds="locations", visible=False)
-        map_figure.update_layout(height=520, margin=dict(l=0, r=0, t=0, b=0))
-        st.plotly_chart(map_figure, width="stretch")
-    with right_map:
-        top_regions = region_summary.sort_values(
-            "Publicaciones", ascending=False
-        ).head(max_categories_chart)
-        if not top_regions.empty:
-            st.plotly_chart(
-                horizontal_bar(
-                    top_regions.rename(columns={"DEPARTAMEN_GEO": "Departamento"}),
-                    "Departamento",
-                    "Departamentos con más publicaciones",
-                    max_categories_chart,
-                ),
-                width="stretch",
-            )
 
 with tabs[2]:
     st.subheader("Evolución temporal")
@@ -551,8 +546,8 @@ with tabs[2]:
         )
         time_figure.update_layout(
             height=450,
-            xaxis_title="Año",
-            yaxis_title="Publicaciones únicas",
+            xaxis_title="Año de publicación o aprobación",
+            yaxis_title="Publicaciones",
         )
         st.plotly_chart(time_figure, width="stretch")
 

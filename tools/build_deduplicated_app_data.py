@@ -382,6 +382,30 @@ def main() -> None:
         dtype="string",
         engine="openpyxl",
     )
+    proposed_ids = pd.read_excel(
+        dedup_source,
+        sheet_name="PUBLICACIONES_PROPUESTAS",
+        dtype="string",
+        engine="openpyxl",
+    )[
+        [
+            PUBLICATION_ID,
+            "HUELLA_PUBLICACION_PERSISTENTE",
+            "METODO_HUELLA",
+        ]
+    ]
+    master_registry = pd.read_excel(
+        dedup_source,
+        sheet_name="REGISTRO_MAESTRO_IDS",
+        dtype="string",
+        engine="openpyxl",
+    )
+    id_merges = pd.read_excel(
+        dedup_source,
+        sheet_name="FUSIONES_IDS",
+        dtype="string",
+        engine="openpyxl",
+    )
 
     technical_sources = data_dir / "_fuentes_tecnicas"
     previous_app = latest_file(
@@ -407,6 +431,12 @@ def main() -> None:
     dimensions["DIM_BASES_DOCUMENTALES"] = database_dimension(source, mapping)
 
     publications = build_publications(source, mapping)
+    publications = publications.merge(
+        proposed_ids,
+        on=PUBLICATION_ID,
+        how="left",
+        validate="one_to_one",
+    )
     academic_fields, academic_audit = derive_academic_fields(source, mapping)
     publications = publications.merge(
         academic_fields,
@@ -433,6 +463,8 @@ def main() -> None:
             {"indicador": "decisiones_revisadas", "valor": len(decisions)},
             {"indicador": "tesis_con_campos_academicos", "valor": len(academic_fields)},
             {"indicador": "conflictos_academicos_auditados", "valor": len(academic_audit)},
+            {"indicador": "claves_registro_maestro", "valor": len(master_registry)},
+            {"indicador": "fusiones_ids_historicos", "valor": len(id_merges)},
             {
                 "indicador": "articulos_de_conferencia",
                 "valor": int(
@@ -450,6 +482,8 @@ def main() -> None:
             {"hoja": "REGISTRO_PUBLICACION", "proposito": "Relación auditable registro-publicación", "clave": RECORD_ID},
             {"hoja": "DECISIONES_REVISADAS", "proposito": "Adjudicación de los 72 pares", "clave": "id_registro_a + id_registro_b"},
             {"hoja": "AUDITORIA_ACADEMICA", "proposito": "Combinaciones académicas resueltas", "clave": PUBLICATION_ID},
+            {"hoja": "REGISTRO_MAESTRO_IDS", "proposito": "Claves de identidad persistentes", "clave": "CLAVE_IDENTIDAD"},
+            {"hoja": "FUSIONES_IDS", "proposito": "Alias de identificadores históricos", "clave": "ID_PUBLICACION_ALIAS"},
             *[
                 {
                     "hoja": sheet,
@@ -469,6 +503,10 @@ def main() -> None:
         academic_audit.to_excel(
             writer, sheet_name="AUDITORIA_ACADEMICA", index=False
         )
+        master_registry.to_excel(
+            writer, sheet_name="REGISTRO_MAESTRO_IDS", index=False
+        )
+        id_merges.to_excel(writer, sheet_name="FUSIONES_IDS", index=False)
         for sheet, dimension in dimensions.items():
             dimension.to_excel(writer, sheet_name=sheet, index=False)
         summary.to_excel(writer, sheet_name="RESUMEN_ADAPTACION", index=False)
@@ -503,6 +541,8 @@ def main() -> None:
 - **Decisiones revisadas:** {len(decisions):,}
 - **Tesis con clasificación académica pública:** {len(academic_fields):,}
 - **Combinaciones académicas auditadas:** {len(academic_audit):,}
+- **Claves persistentes registradas:** {len(master_registry):,}
+- **Fusiones de identificadores históricos:** {len(id_merges):,}
 
 ## Contrato
 
@@ -516,6 +556,10 @@ def main() -> None:
   `Suficiencia profesional` u `Otros`.
 - `No aplica` no se expone en los campos académicos públicos.
 - `AUDITORIA_ACADEMICA` conserva las combinaciones de origen resueltas.
+- `HUELLA_PUBLICACION_PERSISTENTE` identifica de forma estable cada código.
+- `REGISTRO_MAESTRO_IDS` relaciona DOI, URL, datos bibliográficos y registros
+  con su identificador persistente.
+- `FUSIONES_IDS` conserva alias cuando nuevas evidencias fusionen códigos.
 - `TIPO_PUBLICACION_PUBLICO` presenta únicamente `Artículo` y `Tesis`.
 - `SUBTIPO_PUBLICACION_PUBLICO` distingue `Artículo científico` y
   `Artículo de conferencia`; no se aplica a tesis.

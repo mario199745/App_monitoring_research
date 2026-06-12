@@ -15,6 +15,7 @@ REQUIRED_MAIN_COLUMNS = [
     "USAR_PARA_CONTEO_UNICO",
     "GRADO_ACADEMICO_PUBLICO",
     "NIVEL_ACADEMICO_PUBLICO",
+    "HUELLA_PUBLICACION_PERSISTENTE",
     RECORD_ID_COL,
 ]
 
@@ -61,6 +62,8 @@ def main() -> None:
             "REGISTRO_PUBLICACION",
             "DECISIONES_REVISADAS",
             "AUDITORIA_ACADEMICA",
+            "REGISTRO_MAESTRO_IDS",
+            "FUSIONES_IDS",
             *REQUIRED_DIMENSIONS,
         ]
         if sheet not in app_xl.sheet_names
@@ -95,6 +98,11 @@ def main() -> None:
         raise AssertionError(
             f"Se esperaban 6,217 publicaciones consolidadas y se obtuvieron {len(df)}."
         )
+    if (
+        df["HUELLA_PUBLICACION_PERSISTENTE"].isna().any()
+        or not df["HUELLA_PUBLICACION_PERSISTENTE"].is_unique
+    ):
+        raise AssertionError("Las huellas persistentes no son completas y únicas.")
     if set(df["TIPO_PUBLICACION_PUBLICO"].dropna()) != {"Artículo", "Tesis"}:
         raise AssertionError("TIPO_PUBLICACION_PUBLICO no cumple la jerarquía.")
     allowed_subtypes = {"Artículo científico", "Artículo de conferencia"}
@@ -158,6 +166,18 @@ def main() -> None:
         dtype="string",
         engine="openpyxl",
     )
+    master_registry = pd.read_excel(
+        app_file,
+        sheet_name="REGISTRO_MAESTRO_IDS",
+        dtype="string",
+        engine="openpyxl",
+    )
+    if master_registry["CLAVE_IDENTIDAD"].duplicated().any():
+        raise AssertionError("REGISTRO_MAESTRO_IDS contiene claves duplicadas.")
+    if not ids.issubset(
+        set(master_registry[RECORD_ID_COL].dropna().astype(str))
+    ):
+        raise AssertionError("El registro maestro no cubre todas las publicaciones.")
     if len(records) != 6574 or records[SOURCE_RECORD_ID_COL].duplicated().any():
         raise AssertionError("REGISTROS_ORIGEN no conserva los 6,574 registros.")
     if (
@@ -200,6 +220,7 @@ def main() -> None:
     print(f"COLUMNS={len(df.columns)}")
     print(f"UNIQUE_IDS={df[RECORD_ID_COL].nunique()}")
     print(f"SOURCE_RECORDS={len(records)}")
+    print(f"MASTER_KEYS={len(master_registry)}")
     print("VALIDATION=OK")
 
 

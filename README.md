@@ -26,9 +26,18 @@ El tipo público se organiza en `Artículo` y `Tesis`. Al seleccionar
 `Artículo`, se habilita el subtipo `Artículo científico` o
 `Artículo de conferencia`.
 
+Los códigos `ID_PUBLICACION_PROPUESTA` son persistentes. El registro maestro
+ubicado en `../NOTEBOOK/registro_maestro_publicaciones.csv` permite conservar
+los identificadores existentes y asignar códigos nuevos de forma incremental.
+
 La disponibilidad del contenido se conserva en la base para auditoría, pero no
 se presenta como filtro público porque no equivale necesariamente a acceso
 abierto.
+
+Los indicadores y ejes cuantitativos se presentan como `N° de ...`. El mapa
+territorial también funciona como filtro: permite seleccionar uno o varios
+departamentos, sincroniza la selección con `Región normalizada` y actualiza
+indicadores, gráficos, tabla y descargas.
 
 ## Preparación
 

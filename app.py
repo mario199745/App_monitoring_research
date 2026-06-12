@@ -34,6 +34,10 @@ ACADEMIC_LEVEL_COL = "NIVEL_ACADEMICO_PUBLICO"
 UNIQUE_COL = "USAR_PARA_CONTEO_UNICO"
 MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
 RECORD_ID_COL = "ID_PUBLICACION_PROPUESTA"
+REGION_FILTER_KEY = "relation_filter_region"
+MAP_PENDING_REGIONS_KEY = "_map_pending_regions"
+MAP_LAST_SELECTION_KEY = "_map_last_selection"
+MAP_WIDGET_VERSION_KEY = "_map_widget_version"
 
 SIMPLE_FILTERS = [
     (TYPE_COL, "Tipo de publicación"),
@@ -281,6 +285,42 @@ def apply_relation_filters(
     return filtered
 
 
+def selected_map_region_keys(event) -> tuple[str, ...]:
+    if event is None:
+        return ()
+    selection = getattr(event, "selection", None)
+    if selection is None and isinstance(event, dict):
+        selection = event.get("selection")
+    points = getattr(selection, "points", None)
+    if points is None and isinstance(selection, dict):
+        points = selection.get("points", [])
+
+    selected = []
+    for point in points or []:
+        location = point.get("location") if isinstance(point, dict) else None
+        if not location and isinstance(point, dict):
+            customdata = point.get("customdata")
+            if isinstance(customdata, (list, tuple)) and customdata:
+                location = customdata[0]
+        key = normalize_key(location)
+        if key:
+            selected.append(key)
+    return tuple(sorted(set(selected)))
+
+
+def map_regions_to_filter_values(
+    region_keys: tuple[str, ...],
+    region_relation: pd.DataFrame,
+) -> list[str]:
+    if not region_keys or region_relation.empty:
+        return []
+    categories = region_relation["categoria"].dropna().astype(str).str.strip()
+    lookup = {}
+    for category in categories:
+        lookup.setdefault(normalize_key(category), category)
+    return [lookup[key] for key in region_keys if key in lookup]
+
+
 def filtered_expanded_regions(
     df_scope: pd.DataFrame,
     expanded_regions: pd.DataFrame,
@@ -341,11 +381,12 @@ def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
         text="Publicaciones",
         title=title,
         color_discrete_sequence=["#256d5b"],
+        labels={"Publicaciones": "N° de Publicaciones"},
     )
     figure.update_layout(
         height=430,
         showlegend=False,
-        xaxis_title="Publicaciones",
+        xaxis_title="N° de Publicaciones",
         yaxis_title="",
         margin=dict(l=10, r=10, t=45, b=10),
     )
@@ -398,6 +439,11 @@ if UNIQUE_COL in df_mode.columns:
     df_mode = df_mode[
         df_mode[UNIQUE_COL].fillna("").astype(str).str.upper().eq("SI")
     ].copy()
+
+if MAP_PENDING_REGIONS_KEY in st.session_state:
+    st.session_state[REGION_FILTER_KEY] = st.session_state.pop(
+        MAP_PENDING_REGIONS_KEY
+    )
 
 st.markdown(
     """
@@ -479,11 +525,11 @@ database_count = (
 )
 
 metrics = st.columns(5)
-metrics[0].metric("Publicaciones", human_int(unique_publications))
-metrics[1].metric("Departamentos", human_int(regions_with_data))
+metrics[0].metric("N° de Publicaciones", human_int(unique_publications))
+metrics[1].metric("N° de Departamentos", human_int(regions_with_data))
 metrics[2].metric("Periodo de publicación/aprobación", period)
-metrics[3].metric("Áreas temáticas", human_int(area_count))
-metrics[4].metric("Bases documentales", human_int(database_count))
+metrics[3].metric("N° de Áreas temáticas", human_int(area_count))
+metrics[4].metric("N° de Bases documentales", human_int(database_count))
 
 st.caption(
     "Una publicación puede pertenecer a varias áreas, ejes, líneas, regiones "
@@ -537,6 +583,26 @@ with tabs[0]:
 
 with tabs[1]:
     st.subheader("Distribución territorial")
+    selected_sidebar_regions = st.session_state.get(REGION_FILTER_KEY, [])
+    if selected_sidebar_regions:
+        selected_text = ", ".join(selected_sidebar_regions)
+        st.info(f"Filtro territorial activo: {selected_text}")
+        if st.button(
+            "Limpiar selección territorial",
+            key="clear_territorial_selection",
+            width="stretch",
+        ):
+            st.session_state[MAP_PENDING_REGIONS_KEY] = []
+            st.session_state[MAP_LAST_SELECTION_KEY] = ()
+            st.session_state[MAP_WIDGET_VERSION_KEY] = (
+                st.session_state.get(MAP_WIDGET_VERSION_KEY, 0) + 1
+            )
+            st.rerun()
+    else:
+        st.caption(
+            "Selecciona uno o varios departamentos en el mapa para filtrar "
+            "todos los indicadores, gráficos, datos y descargas."
+        )
     territorial_rows = filtered_expanded_regions(df_filtered, expanded_regions)
     publications_with_department = territorial_rows.loc[
         territorial_rows.get("DEP_EN_GEOJSON", False).astype(bool),
@@ -554,11 +620,39 @@ with tabs[1]:
         color="Publicaciones",
         hover_name="DEPARTAMEN_GEO",
         hover_data={"DEP_KEY": False, "IDDPTO": False},
+        custom_data=["DEP_KEY"],
         color_continuous_scale="YlGnBu",
+        labels={"Publicaciones": "N° de Publicaciones"},
     )
     map_figure.update_geos(fitbounds="locations", visible=False)
-    map_figure.update_layout(height=680, margin=dict(l=0, r=0, t=0, b=0))
-    st.plotly_chart(map_figure, width="stretch")
+    map_figure.update_layout(
+        height=680,
+        margin=dict(l=0, r=0, t=0, b=0),
+        clickmode="event+select",
+    )
+    map_event = st.plotly_chart(
+        map_figure,
+        width="stretch",
+        key=(
+            "territorial_map_"
+            f"{st.session_state.get(MAP_WIDGET_VERSION_KEY, 0)}"
+        ),
+        on_select="rerun",
+        selection_mode="points",
+    )
+    selected_map_keys = selected_map_region_keys(map_event)
+    last_map_selection = tuple(
+        st.session_state.get(MAP_LAST_SELECTION_KEY, ())
+    )
+    if selected_map_keys and selected_map_keys != last_map_selection:
+        selected_filter_values = map_regions_to_filter_values(
+            selected_map_keys,
+            relations.get("region", pd.DataFrame()),
+        )
+        if selected_filter_values:
+            st.session_state[MAP_LAST_SELECTION_KEY] = selected_map_keys
+            st.session_state[MAP_PENDING_REGIONS_KEY] = selected_filter_values
+            st.rerun()
 
     top_regions = region_summary.sort_values(
         "Publicaciones", ascending=False
@@ -599,7 +693,7 @@ with tabs[2]:
         time_figure.update_layout(
             height=450,
             xaxis_title="Año de publicación o aprobación",
-            yaxis_title="Publicaciones",
+            yaxis_title="N° de Publicaciones",
         )
         st.plotly_chart(time_figure, width="stretch")
 

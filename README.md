@@ -27,5 +27,7 @@ python tools/validate_app_data.py
 streamlit run app.py
 ```
 
-La trazabilidad técnica se encuentra en
-`docs/TRAZABILIDAD_APLICATIVO.md`.
+La trazabilidad técnica se encuentra en:
+
+- `../NOTEBOOK/docs/TRAZABILIDAD_APLICATIVO.md`
+- `../NOTEBOOK/docs/TRAZABILIDAD_BASE_ADAPTADA.md`

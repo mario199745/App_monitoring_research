@@ -250,9 +250,11 @@ def main() -> None:
     app_root = Path(__file__).resolve().parents[1]
     project_root = app_root.parent
     data_dir = app_root / "data"
+    docs_dir = project_root / "NOTEBOOK" / "docs"
     notebook_outputs = project_root / "NOTEBOOK" / "salidas_limpieza"
     source_data = project_root / "DATOS"
     data_dir.mkdir(parents=True, exist_ok=True)
+    docs_dir.mkdir(parents=True, exist_ok=True)
 
     latest_output = latest_directory(notebook_outputs, "ejecucion_*")
     homologated_source = latest_output / "BASE_HOMOLOGADA_42_CAMPOS.xlsx"
@@ -381,7 +383,7 @@ def main() -> None:
             ]
         ).to_excel(writer, sheet_name="TRAZABILIDAD_ADAPTACION", index=False)
 
-    trace_file = data_dir / "TRAZABILIDAD_BASE_ADAPTADA.md"
+    trace_file = docs_dir / "TRAZABILIDAD_BASE_ADAPTADA.md"
     trace_file.write_text(
         f"""# Trazabilidad de la base adaptada
 

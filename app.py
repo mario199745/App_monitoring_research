@@ -29,10 +29,9 @@ YEAR_COL = "General_ Año"
 REGION_COL = "REGION_NORM_SUGERIDA"
 UNIQUE_COL = "USAR_PARA_CONTEO_UNICO"
 MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
-RECORD_ID_COL = "ID_REGISTRO_ANALISIS"
+RECORD_ID_COL = "ID_PUBLICACION_PROPUESTA"
 
 SIMPLE_FILTERS = [
-    ("Nombre de Base de datos", "Base de datos"),
     (TYPE_COL, "Tipo de publicación"),
     ("General_ Tipo de tesis Pre/Posgrado", "Nivel de tesis"),
     ("General_ Idioma", "Idioma"),
@@ -44,6 +43,11 @@ SIMPLE_FILTERS = [
 ]
 
 RELATION_CONFIG = {
+    "base": {
+        "sheet": "DIM_BASES_DOCUMENTALES",
+        "source": "Nombre de Base de datos",
+        "label": "Base documental",
+    },
     "repositorio": {
         "sheet": "DIM_REPOSITORIOS",
         "source": "General_ Repositorio",
@@ -79,8 +83,6 @@ RELATION_CONFIG = {
 REQUIRED_COLUMNS = [
     TYPE_COL,
     YEAR_COL,
-    UNIQUE_COL,
-    MASTER_KEY_COL,
     RECORD_ID_COL,
 ]
 
@@ -209,7 +211,7 @@ def apply_relation_filters(
     relations: dict[str, pd.DataFrame],
 ) -> pd.DataFrame:
     filtered = df_scope.copy()
-    for key in ["repositorio", "region", "institucion", "eje", "area"]:
+    for key in ["base", "repositorio", "region", "institucion", "eje", "area"]:
         config = RELATION_CONFIG[key]
         relation = relations.get(key, pd.DataFrame())
         if relation.empty:
@@ -369,8 +371,9 @@ st.markdown(
 
 st.title("Revisión bibliográfica DEI")
 st.caption(
-    "Explora publicaciones sobre recursos forestales, biodiversidad y "
-    "fauna silvestre. Las categorías múltiples se contabilizan por separado."
+    "Explora publicaciones consolidadas sobre recursos forestales, "
+    "biodiversidad y fauna silvestre. Las categorías múltiples se "
+    "contabilizan por separado."
 )
 
 with st.sidebar:
@@ -383,7 +386,11 @@ df_filtered = apply_simple_filters(df_mode)
 df_filtered = apply_relation_filters(df_filtered, relations)
 
 type_summary = simple_summary(df_filtered, TYPE_COL)
-database_summary = simple_summary(df_filtered, "Nombre de Base de datos")
+database_summary = relation_summary(
+    relations.get("base", pd.DataFrame()),
+    df_filtered,
+    include_others,
+)
 region_summary = department_summary(df_filtered, expanded_regions, map_base)
 
 repo_summary = relation_summary(
@@ -421,8 +428,8 @@ area_count = (
     else 0
 )
 database_count = (
-    int(df_filtered["Nombre de Base de datos"].dropna().astype(str).nunique())
-    if "Nombre de Base de datos" in df_filtered.columns
+    int(database_summary["categoria"].nunique())
+    if not database_summary.empty
     else 0
 )
 
@@ -461,7 +468,7 @@ with tabs[0]:
             st.plotly_chart(
                 horizontal_bar(
                     database_summary,
-                    "Nombre de Base de datos",
+                    "categoria",
                     "Publicaciones por base documental",
                     max_categories_chart,
                 ),
@@ -603,6 +610,7 @@ with tabs[4]:
     visible_columns = [
         "General_ Título",
         "General_ Autor(es)",
+        RECORD_ID_COL,
         YEAR_COL,
         TYPE_COL,
         REGION_COL,

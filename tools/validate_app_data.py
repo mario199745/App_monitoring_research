@@ -3,14 +3,14 @@ from pathlib import Path
 import pandas as pd
 
 
-RECORD_ID_COL = "ID_REGISTRO_ANALISIS"
+SOURCE_RECORD_ID_COL = "ID_REGISTRO_ANALISIS"
+RECORD_ID_COL = "ID_PUBLICACION_PROPUESTA"
 MASTER_KEY_COL = "CLAVE_BIBLIOGRAFICA_MASTER"
 
 REQUIRED_MAIN_COLUMNS = [
     "TIPO_PUBLICACION_NORM",
     "General_ Año",
     "USAR_PARA_CONTEO_UNICO",
-    MASTER_KEY_COL,
     RECORD_ID_COL,
 ]
 
@@ -21,6 +21,7 @@ REQUIRED_DIMENSIONS = [
     "DIM_LINEAS_INVESTIGACION",
     "DIM_REGIONES_NORMALIZADAS",
     "DIM_INSTITUCIONES",
+    "DIM_BASES_DOCUMENTALES",
 ]
 
 REQUIRED_TERRITORIAL_SHEETS = [
@@ -50,7 +51,13 @@ def main() -> None:
 
     missing_sheets = [
         sheet
-        for sheet in ["BD_APP", *REQUIRED_DIMENSIONS]
+        for sheet in [
+            "BD_APP",
+            "REGISTROS_ORIGEN",
+            "REGISTRO_PUBLICACION",
+            "DECISIONES_REVISADAS",
+            *REQUIRED_DIMENSIONS,
+        ]
         if sheet not in app_xl.sheet_names
     ]
     if missing_sheets:
@@ -79,6 +86,10 @@ def main() -> None:
         raise AssertionError(f"Columnas faltantes: {missing_columns}")
     if df[RECORD_ID_COL].isna().any() or not df[RECORD_ID_COL].is_unique:
         raise AssertionError(f"{RECORD_ID_COL} no es una clave primaria válida.")
+    if len(df) != 6217:
+        raise AssertionError(
+            f"Se esperaban 6,217 publicaciones consolidadas y se obtuvieron {len(df)}."
+        )
     database_names = (
         df["Nombre de Base de datos"].dropna().astype(str).str.strip()
     )
@@ -92,6 +103,26 @@ def main() -> None:
         )
 
     ids = set(df[RECORD_ID_COL].astype(str))
+    records = pd.read_excel(
+        app_file,
+        sheet_name="REGISTROS_ORIGEN",
+        dtype="string",
+        engine="openpyxl",
+    )
+    relation = pd.read_excel(
+        app_file,
+        sheet_name="REGISTRO_PUBLICACION",
+        dtype="string",
+        engine="openpyxl",
+    )
+    if len(records) != 6574 or records[SOURCE_RECORD_ID_COL].duplicated().any():
+        raise AssertionError("REGISTROS_ORIGEN no conserva los 6,574 registros.")
+    if (
+        len(relation) != 6574
+        or relation[SOURCE_RECORD_ID_COL].duplicated().any()
+        or set(relation[RECORD_ID_COL].astype(str)) != ids
+    ):
+        raise AssertionError("REGISTRO_PUBLICACION no cumple el contrato.")
     for sheet in REQUIRED_DIMENSIONS:
         dimension = pd.read_excel(
             app_file,
@@ -125,6 +156,7 @@ def main() -> None:
     print(f"ROWS={len(df)}")
     print(f"COLUMNS={len(df.columns)}")
     print(f"UNIQUE_IDS={df[RECORD_ID_COL].nunique()}")
+    print(f"SOURCE_RECORDS={len(records)}")
     print("VALIDATION=OK")
 
 

@@ -8,6 +8,12 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from tools.repository_classification import (
+    REPOSITORY_CLASS_COL,
+    UNIVERSITY_REPOSITORY_COL,
+    classify_repository,
+)
+
 
 st.set_page_config(
     page_title="Revisión bibliográfica DEI",
@@ -55,6 +61,11 @@ RELATION_CONFIG = {
         "sheet": "DIM_REPOSITORIOS",
         "source": "General_ Repositorio",
         "label": "Repositorio",
+    },
+    "repositorio_clase": {
+        "sheet": "DIM_REPOSITORIOS",
+        "source": REPOSITORY_CLASS_COL,
+        "label": "Clase de repositorio",
     },
     "area": {
         "sheet": "DIM_AREAS_TEMATICAS",
@@ -151,6 +162,29 @@ def clean_relation(
     if not include_others:
         result = result[result["categoria"].str.casefold().ne("otros")]
     return result
+
+
+def enrich_repository_relation(relation: pd.DataFrame) -> pd.DataFrame:
+    if relation.empty:
+        return relation
+    result = relation.copy()
+    if REPOSITORY_CLASS_COL not in result.columns:
+        classes = result["categoria"].map(classify_repository)
+        result[REPOSITORY_CLASS_COL] = classes.map(lambda item: item[0])
+        result[UNIVERSITY_REPOSITORY_COL] = classes.map(lambda item: item[1])
+    return result
+
+
+def relation_from_column(
+    relation: pd.DataFrame,
+    column: str,
+) -> pd.DataFrame:
+    if relation.empty or column not in relation.columns:
+        return pd.DataFrame(columns=[RECORD_ID_COL, "categoria"])
+    result = relation[[RECORD_ID_COL, column]].dropna().copy()
+    result["categoria"] = result[column].astype(str).str.strip()
+    result = result[result["categoria"].ne("")]
+    return result[[RECORD_ID_COL, "categoria"]].drop_duplicates()
 
 
 def visible_relation(
@@ -260,7 +294,15 @@ def apply_relation_filters(
     relations: dict[str, pd.DataFrame],
 ) -> pd.DataFrame:
     filtered = df_scope.copy()
-    for key in ["base", "repositorio", "region", "institucion", "eje", "area"]:
+    for key in [
+        "base",
+        "repositorio_clase",
+        "repositorio",
+        "region",
+        "institucion",
+        "eje",
+        "area",
+    ]:
         config = RELATION_CONFIG[key]
         relation = relations.get(key, pd.DataFrame())
         if relation.empty:
@@ -423,6 +465,13 @@ try:
             )
         else:
             relations[key] = pd.DataFrame()
+    relations["repositorio"] = enrich_repository_relation(
+        relations.get("repositorio", pd.DataFrame())
+    )
+    relations["repositorio_clase"] = relation_from_column(
+        relations["repositorio"],
+        REPOSITORY_CLASS_COL,
+    )
 except Exception as exc:
     st.error(f"No se pudo cargar la información: {exc}")
     st.stop()
@@ -489,6 +538,11 @@ repo_summary = relation_summary(
     df_filtered,
     include_others,
 )
+repo_class_summary = relation_summary(
+    relations.get("repositorio_clase", pd.DataFrame()),
+    df_filtered,
+    include_others,
+)
 area_summary = relation_summary(
     relations.get("area", pd.DataFrame()),
     df_filtered,
@@ -517,12 +571,18 @@ database_count = (
     if not database_summary.empty
     else 0
 )
+repo_class_count = (
+    int(repo_class_summary["categoria"].nunique())
+    if not repo_class_summary.empty
+    else 0
+)
 
-metrics = st.columns(4)
+metrics = st.columns(5)
 metrics[0].metric("N° de Publicaciones", human_int(unique_publications))
 metrics[1].metric("N° de Departamentos", human_int(regions_with_data))
 metrics[2].metric("N° de Áreas temáticas", human_int(area_count))
 metrics[3].metric("N° de Bases documentales", human_int(database_count))
+metrics[4].metric("N° de Clases de repositorio", human_int(repo_class_count))
 
 st.caption(
     "Una publicación puede pertenecer a varias áreas, ejes, líneas, regiones "
@@ -535,7 +595,7 @@ tabs = st.tabs(
 
 with tabs[0]:
     st.subheader("Resumen bibliográfico")
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b = st.columns(2)
     with col_a:
         if not type_summary.empty:
             st.plotly_chart(
@@ -550,6 +610,21 @@ with tabs[0]:
         else:
             st.info("No hay datos para mostrar.")
     with col_b:
+        if not repo_class_summary.empty:
+            st.plotly_chart(
+                horizontal_bar(
+                    repo_class_summary,
+                    "categoria",
+                    "Publicaciones por clase de repositorio",
+                    max_categories_chart,
+                ),
+                width="stretch",
+            )
+        else:
+            st.info("No hay clases de repositorio disponibles.")
+
+    col_c, col_d = st.columns(2)
+    with col_c:
         if not database_summary.empty:
             st.plotly_chart(
                 horizontal_bar(
@@ -562,17 +637,20 @@ with tabs[0]:
             )
         else:
             st.info("No hay datos para mostrar.")
-    with col_c:
+
+    with col_d:
+        st.markdown("#### Repositorios")
         if not repo_summary.empty:
-            st.plotly_chart(
-                horizontal_bar(
-                    repo_summary,
-                    "categoria",
-                    "Repositorios",
-                    max_categories_chart,
-                ),
-                width="stretch",
-            )
+            with st.expander("Ver ranking de repositorios"):
+                st.plotly_chart(
+                    horizontal_bar(
+                        repo_summary,
+                        "categoria",
+                        "Repositorios",
+                        max_categories_chart,
+                    ),
+                    width="stretch",
+                )
         else:
             st.info("No hay relaciones de repositorio disponibles.")
 

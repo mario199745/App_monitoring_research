@@ -14,6 +14,11 @@ La base principal contiene una fila por `ID_PUBLICACION_PROPUESTA` e incluye
 dimensiones expandidas para bases documentales, repositorios, áreas, ejes,
 líneas, regiones e instituciones.
 
+`DIM_REPOSITORIOS` clasifica cada repositorio con `CLASE_REPOSITORIO` y
+`ES_REPOSITORIO_UNIVERSITARIO`. La interfaz permite filtrar por clase de
+repositorio y muestra primero la distribución agregada; el ranking de
+repositorios permanece disponible como detalle.
+
 La interfaz presenta `Otros` por defecto, utiliza nombres documentales sin
 prefijos numéricos y cuenta **6,217 publicaciones consolidadas**. Los 6,574
 registros bibliográficos de origen permanecen disponibles para auditoría.

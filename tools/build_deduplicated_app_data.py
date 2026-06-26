@@ -6,6 +6,12 @@ import re
 
 import pandas as pd
 
+from repository_classification import (
+    REPOSITORY_CLASS_COL,
+    UNIVERSITY_REPOSITORY_COL,
+    classify_repository,
+)
+
 
 RECORD_ID = "ID_REGISTRO_ANALISIS"
 PUBLICATION_ID = "ID_PUBLICACION_PROPUESTA"
@@ -255,6 +261,14 @@ def remap_dimension(
     return result[front + remaining].reset_index(drop=True)
 
 
+def classify_repository_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
+    result = dimension.copy()
+    classes = result["categoria"].map(classify_repository)
+    result[REPOSITORY_CLASS_COL] = classes.map(lambda item: item[0])
+    result[UNIVERSITY_REPOSITORY_COL] = classes.map(lambda item: item[1])
+    return result
+
+
 def database_dimension(
     source: pd.DataFrame,
     mapping: pd.DataFrame,
@@ -428,6 +442,10 @@ def main() -> None:
         for sheet in DIMENSION_SHEETS
         if sheet in previous_excel.sheet_names
     }
+    if "DIM_REPOSITORIOS" in dimensions:
+        dimensions["DIM_REPOSITORIOS"] = classify_repository_dimension(
+            dimensions["DIM_REPOSITORIOS"]
+        )
     dimensions["DIM_BASES_DOCUMENTALES"] = database_dimension(source, mapping)
 
     publications = build_publications(source, mapping)
@@ -465,6 +483,14 @@ def main() -> None:
             {"indicador": "conflictos_academicos_auditados", "valor": len(academic_audit)},
             {"indicador": "claves_registro_maestro", "valor": len(master_registry)},
             {"indicador": "fusiones_ids_historicos", "valor": len(id_merges)},
+            {
+                "indicador": "clases_repositorio",
+                "valor": int(
+                    dimensions["DIM_REPOSITORIOS"][REPOSITORY_CLASS_COL].nunique()
+                )
+                if "DIM_REPOSITORIOS" in dimensions
+                else 0,
+            },
             {
                 "indicador": "articulos_de_conferencia",
                 "valor": int(
@@ -551,6 +577,10 @@ def main() -> None:
 - `REGISTRO_PUBLICACION` permite reconstruir cada agrupación.
 - Las dimensiones y la base territorial cuentan publicaciones consolidadas.
 - Las bases documentales se conservan como una relación multivaluada.
+- `DIM_REPOSITORIOS` incorpora `{REPOSITORY_CLASS_COL}` y
+  `{UNIVERSITY_REPOSITORY_COL}` para diferenciar repositorios universitarios,
+  buscadores académicos, redes académicas, agregadores, indexadores,
+  editoriales, revistas, bibliotecas y casos no clasificados.
 - `GRADO_ACADEMICO_PUBLICO` muestra `Pregrado`, `Posgrado` u `Otros`.
 - `NIVEL_ACADEMICO_PUBLICO` muestra `Pregrado`, `Maestría`, `Doctorado`,
   `Suficiencia profesional` u `Otros`.

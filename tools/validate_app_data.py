@@ -2,6 +2,12 @@ from pathlib import Path
 
 import pandas as pd
 
+from repository_classification import (
+    REPOSITORY_CLASS_COL,
+    REPOSITORY_CLASSES,
+    UNIVERSITY_REPOSITORY_COL,
+)
+
 
 SOURCE_RECORD_ID_COL = "ID_REGISTRO_ANALISIS"
 RECORD_ID_COL = "ID_PUBLICACION_PROPUESTA"
@@ -201,6 +207,30 @@ def main() -> None:
         orphan_ids = set(dimension[RECORD_ID_COL].dropna().astype(str)) - ids
         if orphan_ids:
             raise AssertionError(f"{sheet} contiene identificadores huérfanos.")
+        if sheet == "DIM_REPOSITORIOS":
+            required_repository_columns = {
+                REPOSITORY_CLASS_COL,
+                UNIVERSITY_REPOSITORY_COL,
+            }
+            if not required_repository_columns.issubset(dimension.columns):
+                raise AssertionError(
+                    "DIM_REPOSITORIOS no contiene la clasificación requerida."
+                )
+            repository_classes = set(
+                dimension[REPOSITORY_CLASS_COL].dropna().astype(str)
+            )
+            if not repository_classes.issubset(REPOSITORY_CLASSES):
+                raise AssertionError(
+                    "DIM_REPOSITORIOS contiene clases no permitidas: "
+                    + ", ".join(sorted(repository_classes - REPOSITORY_CLASSES))
+                )
+            university_flags = set(
+                dimension[UNIVERSITY_REPOSITORY_COL].dropna().astype(str)
+            )
+            if not university_flags.issubset({"Si", "No", "Indeterminado"}):
+                raise AssertionError(
+                    "ES_REPOSITORIO_UNIVERSITARIO contiene valores inválidos."
+                )
 
     territorial = pd.read_excel(
         territorial_file,

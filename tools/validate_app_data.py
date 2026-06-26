@@ -73,6 +73,7 @@ def main() -> None:
             "REGISTRO_PUBLICACION",
             "DECISIONES_REVISADAS",
             "AUDITORIA_ACADEMICA",
+            "AUDITORIA_INSTITUCIONES",
             "REGISTRO_MAESTRO_IDS",
             "FUSIONES_IDS",
             *REQUIRED_DIMENSIONS,
@@ -258,6 +259,30 @@ def main() -> None:
             )
             if not university_flags.issubset({"Si", "No", "Indeterminado"}):
                 raise AssertionError("ES_UNIVERSIDAD contiene valores inválidos.")
+            if (
+                dimension[INSTITUTION_CLASS_COL]
+                .astype(str)
+                .eq("Revista / boletin mal ubicado")
+                .any()
+            ):
+                raise AssertionError(
+                    "DIM_INSTITUCIONES conserva revistas o boletines mal ubicados."
+                )
+
+    institution_audit = pd.read_excel(
+        app_file,
+        sheet_name="AUDITORIA_INSTITUCIONES",
+        dtype="string",
+        engine="openpyxl",
+    )
+    required_audit_columns = {
+        SOURCE_RECORD_ID_COL,
+        "INSTITUCION_ORIGINAL",
+        "REVISTA_FINAL",
+        "INSTITUCION_FINAL",
+    }
+    if not required_audit_columns.issubset(institution_audit.columns):
+        raise AssertionError("AUDITORIA_INSTITUCIONES no cumple el contrato mínimo.")
 
     territorial = pd.read_excel(
         territorial_file,

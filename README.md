@@ -26,6 +26,11 @@ por clase y luego rankings desplegables para universidades, entidades públicas,
 centros de investigación, sociedades científicas y revistas o boletines mal
 ubicados.
 
+Los valores con apariencia de revista o boletín detectados en
+`General_ Institución/Universidad` se migran a `General_ Nombre de revista`.
+La hoja `AUDITORIA_INSTITUCIONES` conserva el valor original, la revista final
+y la institución final asignada.
+
 La interfaz presenta `Otros` por defecto, utiliza nombres documentales sin
 prefijos numéricos y cuenta **6,217 publicaciones consolidadas**. Los 6,574
 registros bibliográficos de origen permanecen disponibles para auditoría.

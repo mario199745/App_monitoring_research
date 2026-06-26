@@ -27,6 +27,41 @@ ACADEMIC_GRADE = "GRADO_ACADEMICO_PUBLICO"
 ACADEMIC_LEVEL = "NIVEL_ACADEMICO_PUBLICO"
 PUBLIC_TYPE = "TIPO_PUBLICACION_PUBLICO"
 PUBLIC_SUBTYPE = "SUBTIPO_PUBLICACION_PUBLICO"
+INSTITUTION_SOURCE = "General_ Institución/Universidad"
+JOURNAL_SOURCE = "General_ Nombre de revista"
+
+MISPLACED_JOURNAL_ENTITIES = {
+    "Anales del Jardín Botánico de Madrid": "Jardín Botánico de Madrid",
+    "Annals of the American Association of Geographers": (
+        "American Association of Geographers"
+    ),
+    "Annals of the Missouri Botanical Garden": "Missouri Botanical Garden",
+    "Biological Journal of the Linnean Society": "Linnean Society",
+    "Boletín Sociedad Entomológica Aragonesa": "Sociedad Entomológica Aragonesa",
+    "Boletín de la Sociedad Argentina de Botánica": (
+        "Sociedad Argentina de Botánica"
+    ),
+    "Boletín de la Sociedad Geográfica de Lima": "Sociedad Geográfica de Lima",
+    "Boletín del Instituto del Mar del Perú": "Instituto del Mar del Perú",
+    "Botanical Journal of the Linnean Society": "Linnean Society",
+    "PROCEEDINGS-ENTOMOLOGICAL SOCIETY OF WASHINGTON": (
+        "Entomological Society of Washington"
+    ),
+    "Proceedings of the Biological Society of Washington": (
+        "Biological Society of Washington"
+    ),
+    "Proceedings of the Entomological Society of Washington": (
+        "Entomological Society of Washington"
+    ),
+    "Proceedings of the Royal Society B: Biological Sciences": "Royal Society",
+    "Proceedings of the Zoological Institute of the Russian Academy of Sciences": (
+        "Zoological Institute of the Russian Academy of Sciences"
+    ),
+    "The Society of Wetland Scientists Bulletin": "Society of Wetland Scientists",
+    "Zoologische Abhandlungen Staatliches Museum für Tierkunde Dresden": (
+        "Staatliches Museum für Tierkunde Dresden"
+    ),
+}
 
 DIMENSION_SHEETS = [
     "DIM_REPOSITORIOS",
@@ -241,6 +276,61 @@ def derive_academic_fields(
     return pd.DataFrame(rows), pd.DataFrame(audit)
 
 
+def is_empty_category(value) -> bool:
+    if pd.isna(value):
+        return True
+    return str(value).strip().casefold() in {"", "otros", "no aplica"}
+
+
+def migrate_misplaced_journals(
+    source: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    result = source.copy()
+    audit_rows = []
+    if INSTITUTION_SOURCE not in result.columns or JOURNAL_SOURCE not in result.columns:
+        return result, pd.DataFrame(audit_rows)
+
+    for index, row in result.iterrows():
+        institution_value = row.get(INSTITUTION_SOURCE)
+        institution_text = (
+            "" if pd.isna(institution_value) else str(institution_value).strip()
+        )
+        institution_class, _ = classify_institution(institution_text)
+        if institution_class != "Revista / boletin mal ubicado":
+            continue
+
+        previous_journal = row.get(JOURNAL_SOURCE)
+        final_journal = previous_journal
+        journal_action = "conservado"
+        if is_empty_category(previous_journal):
+            final_journal = institution_text
+            result.at[index, JOURNAL_SOURCE] = final_journal
+            journal_action = "migrado_a_nombre_revista"
+
+        final_institution = MISPLACED_JOURNAL_ENTITIES.get(
+            institution_text,
+            "Otros",
+        )
+        result.at[index, INSTITUTION_SOURCE] = final_institution
+        audit_rows.append(
+            {
+                RECORD_ID: row.get(RECORD_ID),
+                MASTER_KEY: row.get(MASTER_KEY),
+                "INSTITUCION_ORIGINAL": institution_text,
+                "REVISTA_ORIGINAL": previous_journal,
+                "REVISTA_FINAL": final_journal,
+                "INSTITUCION_FINAL": final_institution,
+                "ACCION_REVISTA": journal_action,
+                "REGLA": (
+                    "Valor con apariencia de revista/boletín en institución; "
+                    "se migra a nombre de revista si el campo estaba vacío u Otros."
+                ),
+            }
+        )
+
+    return result, pd.DataFrame(audit_rows)
+
+
 def remap_dimension(
     dimension: pd.DataFrame,
     mapping: pd.DataFrame,
@@ -290,6 +380,16 @@ def database_dimension(
         [RECORD_ID, MASTER_KEY, "Nombre de Base de datos"]
     ].copy()
     dimension["categoria"] = dimension["Nombre de Base de datos"]
+    dimension["orden_categoria"] = 1
+    return remap_dimension(dimension, mapping)
+
+
+def institution_dimension(
+    source: pd.DataFrame,
+    mapping: pd.DataFrame,
+) -> pd.DataFrame:
+    dimension = source[[RECORD_ID, MASTER_KEY, INSTITUTION_SOURCE]].copy()
+    dimension["categoria"] = dimension[INSTITUTION_SOURCE]
     dimension["orden_categoria"] = 1
     return remap_dimension(dimension, mapping)
 
@@ -397,6 +497,7 @@ def main() -> None:
     source["Nombre de Base de datos"] = source[
         "Nombre de Base de datos"
     ].map(normalize_database_name)
+    source, institution_audit = migrate_misplaced_journals(source)
     mapping = pd.read_excel(
         dedup_source,
         sheet_name="REGISTRO_PUBLICACION",
@@ -459,10 +560,9 @@ def main() -> None:
         dimensions["DIM_REPOSITORIOS"] = classify_repository_dimension(
             dimensions["DIM_REPOSITORIOS"]
         )
-    if "DIM_INSTITUCIONES" in dimensions:
-        dimensions["DIM_INSTITUCIONES"] = classify_institution_dimension(
-            dimensions["DIM_INSTITUCIONES"]
-        )
+    dimensions["DIM_INSTITUCIONES"] = classify_institution_dimension(
+        institution_dimension(source, mapping)
+    )
     dimensions["DIM_BASES_DOCUMENTALES"] = database_dimension(source, mapping)
 
     publications = build_publications(source, mapping)
@@ -498,6 +598,7 @@ def main() -> None:
             {"indicador": "decisiones_revisadas", "valor": len(decisions)},
             {"indicador": "tesis_con_campos_academicos", "valor": len(academic_fields)},
             {"indicador": "conflictos_academicos_auditados", "valor": len(academic_audit)},
+            {"indicador": "migraciones_institucion_revista", "valor": len(institution_audit)},
             {"indicador": "claves_registro_maestro", "valor": len(master_registry)},
             {"indicador": "fusiones_ids_historicos", "valor": len(id_merges)},
             {
@@ -533,6 +634,7 @@ def main() -> None:
             {"hoja": "REGISTRO_PUBLICACION", "proposito": "Relación auditable registro-publicación", "clave": RECORD_ID},
             {"hoja": "DECISIONES_REVISADAS", "proposito": "Adjudicación de los 72 pares", "clave": "id_registro_a + id_registro_b"},
             {"hoja": "AUDITORIA_ACADEMICA", "proposito": "Combinaciones académicas resueltas", "clave": PUBLICATION_ID},
+            {"hoja": "AUDITORIA_INSTITUCIONES", "proposito": "Migración de revistas o boletines desde institución hacia nombre de revista", "clave": RECORD_ID},
             {"hoja": "REGISTRO_MAESTRO_IDS", "proposito": "Claves de identidad persistentes", "clave": "CLAVE_IDENTIDAD"},
             {"hoja": "FUSIONES_IDS", "proposito": "Alias de identificadores históricos", "clave": "ID_PUBLICACION_ALIAS"},
             *[
@@ -553,6 +655,9 @@ def main() -> None:
         decisions.to_excel(writer, sheet_name="DECISIONES_REVISADAS", index=False)
         academic_audit.to_excel(
             writer, sheet_name="AUDITORIA_ACADEMICA", index=False
+        )
+        institution_audit.to_excel(
+            writer, sheet_name="AUDITORIA_INSTITUCIONES", index=False
         )
         master_registry.to_excel(
             writer, sheet_name="REGISTRO_MAESTRO_IDS", index=False
@@ -592,6 +697,7 @@ def main() -> None:
 - **Decisiones revisadas:** {len(decisions):,}
 - **Tesis con clasificación académica pública:** {len(academic_fields):,}
 - **Combinaciones académicas auditadas:** {len(academic_audit):,}
+- **Migraciones institución-revista auditadas:** {len(institution_audit):,}
 - **Claves persistentes registradas:** {len(master_registry):,}
 - **Fusiones de identificadores históricos:** {len(id_merges):,}
 
@@ -616,6 +722,9 @@ def main() -> None:
   `Suficiencia profesional` u `Otros`.
 - `No aplica` no se expone en los campos académicos públicos.
 - `AUDITORIA_ACADEMICA` conserva las combinaciones de origen resueltas.
+- `AUDITORIA_INSTITUCIONES` conserva los valores de revista o boletín
+  detectados en `General_ Institución/Universidad`, su migración hacia
+  `General_ Nombre de revista` y la institución final asignada.
 - `HUELLA_PUBLICACION_PERSISTENTE` identifica de forma estable cada código.
 - `REGISTRO_MAESTRO_IDS` relaciona DOI, URL, datos bibliográficos y registros
   con su identificador persistente.

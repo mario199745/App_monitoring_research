@@ -502,12 +502,6 @@ eje_summary = relation_summary(
 
 unique_publications = df_filtered[RECORD_ID_COL].nunique()
 regions_with_data = int(region_summary["Publicaciones"].gt(0).sum())
-years = pd.to_numeric(df_filtered[YEAR_COL], errors="coerce")
-period = (
-    f"{int(years.min())}-{int(years.max())}"
-    if years.notna().any()
-    else "Sin año"
-)
 area_count = (
     int(
         area_summary.loc[
@@ -524,12 +518,11 @@ database_count = (
     else 0
 )
 
-metrics = st.columns(5)
+metrics = st.columns(4)
 metrics[0].metric("N° de Publicaciones", human_int(unique_publications))
 metrics[1].metric("N° de Departamentos", human_int(regions_with_data))
-metrics[2].metric("Periodo de publicación/aprobación", period)
-metrics[3].metric("N° de Áreas temáticas", human_int(area_count))
-metrics[4].metric("N° de Bases documentales", human_int(database_count))
+metrics[2].metric("N° de Áreas temáticas", human_int(area_count))
+metrics[3].metric("N° de Bases documentales", human_int(database_count))
 
 st.caption(
     "Una publicación puede pertenecer a varias áreas, ejes, líneas, regiones "

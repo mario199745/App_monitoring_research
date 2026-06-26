@@ -10,7 +10,7 @@ UNIVERSITY_REPOSITORY_COL = "ES_REPOSITORIO_UNIVERSITARIO"
 REPOSITORY_CLASSES = {
     "Repositorio universitario",
     "Repositorio institucional publico",
-    "Repositorio nacional / agregador",
+    "Repositorio nacional/regional",
     "Buscador academico",
     "Red academica / perfil de autor",
     "Base bibliografica / indexador",
@@ -271,7 +271,7 @@ def classify_repository(value) -> tuple[str, str]:
     if key in ACADEMIC_NETWORKS:
         return "Red academica / perfil de autor", "No"
     if key in NATIONAL_AGGREGATORS:
-        return "Repositorio nacional / agregador", "No"
+        return "Repositorio nacional/regional", "No"
     if key in BIBLIOGRAPHIC_INDEXES:
         return "Base bibliografica / indexador", "No"
     if key.startswith("REVISTA ") or key in {"CHECKLIST", "PHYTOKEYS"}:

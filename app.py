@@ -8,6 +8,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from tools.institution_classification import (
+    INSTITUTION_CLASS_COL,
+    IS_UNIVERSITY_COL,
+    classify_institution,
+)
 from tools.repository_classification import (
     REPOSITORY_CLASS_COL,
     UNIVERSITY_REPOSITORY_COL,
@@ -92,6 +97,11 @@ RELATION_CONFIG = {
         "source": "General_ Institución/Universidad",
         "label": "Institución / universidad",
     },
+    "institucion_clase": {
+        "sheet": "DIM_INSTITUCIONES",
+        "source": INSTITUTION_CLASS_COL,
+        "label": "Clase de institución",
+    },
 }
 
 REQUIRED_COLUMNS = [
@@ -175,6 +185,17 @@ def enrich_repository_relation(relation: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def enrich_institution_relation(relation: pd.DataFrame) -> pd.DataFrame:
+    if relation.empty:
+        return relation
+    result = relation.copy()
+    if INSTITUTION_CLASS_COL not in result.columns:
+        classes = result["categoria"].map(classify_institution)
+        result[INSTITUTION_CLASS_COL] = classes.map(lambda item: item[0])
+        result[IS_UNIVERSITY_COL] = classes.map(lambda item: item[1])
+    return result
+
+
 def relation_from_column(
     relation: pd.DataFrame,
     column: str,
@@ -224,6 +245,20 @@ def repository_summary_by_class(
         return pd.DataFrame(columns=["categoria", "Publicaciones"])
     filtered_relation = relation[
         relation[REPOSITORY_CLASS_COL].astype(str).str.strip().eq(repository_class)
+    ].copy()
+    return relation_summary(filtered_relation, df_scope, include_others)
+
+
+def institution_summary_by_class(
+    relation: pd.DataFrame,
+    df_scope: pd.DataFrame,
+    institution_class: str,
+    include_others: bool,
+) -> pd.DataFrame:
+    if relation.empty or INSTITUTION_CLASS_COL not in relation.columns:
+        return pd.DataFrame(columns=["categoria", "Publicaciones"])
+    filtered_relation = relation[
+        relation[INSTITUTION_CLASS_COL].astype(str).str.strip().eq(institution_class)
     ].copy()
     return relation_summary(filtered_relation, df_scope, include_others)
 
@@ -313,6 +348,7 @@ def apply_relation_filters(
         "repositorio_clase",
         "repositorio",
         "region",
+        "institucion_clase",
         "institucion",
         "eje",
         "area",
@@ -486,6 +522,13 @@ try:
         relations["repositorio"],
         REPOSITORY_CLASS_COL,
     )
+    relations["institucion"] = enrich_institution_relation(
+        relations.get("institucion", pd.DataFrame())
+    )
+    relations["institucion_clase"] = relation_from_column(
+        relations["institucion"],
+        INSTITUTION_CLASS_COL,
+    )
 except Exception as exc:
     st.error(f"No se pudo cargar la información: {exc}")
     st.stop()
@@ -568,6 +611,53 @@ journal_portal_repo_summary = repository_summary_by_class(
 repo_class_summary = relation_summary(
     relations.get("repositorio_clase", pd.DataFrame()),
     df_filtered,
+    include_others,
+)
+institution_class_summary = relation_summary(
+    relations.get("institucion_clase", pd.DataFrame()),
+    df_filtered,
+    include_others,
+)
+public_university_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Universidad publica nacional",
+    include_others,
+)
+private_university_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Universidad privada nacional",
+    include_others,
+)
+foreign_university_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Universidad extranjera",
+    include_others,
+)
+public_entity_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Instituto publico / entidad estatal",
+    include_others,
+)
+research_center_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Centro de investigacion / cooperacion",
+    include_others,
+)
+scientific_society_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Sociedad cientifica / asociacion",
+    include_others,
+)
+misplaced_journal_institution_summary = institution_summary_by_class(
+    relations.get("institucion", pd.DataFrame()),
+    df_filtered,
+    "Revista / boletin mal ubicado",
     include_others,
 )
 area_summary = relation_summary(
@@ -854,23 +944,41 @@ with tabs[3]:
 
 with tabs[4]:
     st.subheader("Instituciones y universidades")
-    institution_summary = relation_summary(
-        relations.get("institucion", pd.DataFrame()),
-        df_filtered,
-        include_others,
-    )
-    if not institution_summary.empty:
+    if not institution_class_summary.empty:
         st.plotly_chart(
             horizontal_bar(
-                institution_summary,
+                institution_class_summary,
                 "categoria",
-                "Publicaciones por institución o universidad",
+                "Publicaciones por clase de institución",
                 max_categories_chart,
             ),
             width="stretch",
         )
     else:
-        st.info("No hay instituciones para mostrar.")
+        st.info("No hay clases de institución para mostrar.")
+
+    institution_rankings = [
+        ("Universidad pública nacional", public_university_summary),
+        ("Universidad privada nacional", private_university_summary),
+        ("Universidad extranjera", foreign_university_summary),
+        ("Instituto público / entidad estatal", public_entity_summary),
+        ("Centro de investigación / cooperación", research_center_summary),
+        ("Sociedad científica / asociación", scientific_society_summary),
+        ("Revista / boletín mal ubicado", misplaced_journal_institution_summary),
+    ]
+    for title, summary in institution_rankings:
+        if summary.empty:
+            continue
+        with st.expander(title):
+            st.plotly_chart(
+                horizontal_bar(
+                    summary,
+                    "categoria",
+                    title,
+                    max_categories_chart,
+                ),
+                width="stretch",
+            )
 
 with tabs[5]:
     st.subheader("Tabla exploratoria")

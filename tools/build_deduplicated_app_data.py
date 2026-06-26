@@ -6,6 +6,11 @@ import re
 
 import pandas as pd
 
+from institution_classification import (
+    INSTITUTION_CLASS_COL,
+    IS_UNIVERSITY_COL,
+    classify_institution,
+)
 from repository_classification import (
     REPOSITORY_CLASS_COL,
     UNIVERSITY_REPOSITORY_COL,
@@ -269,6 +274,14 @@ def classify_repository_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def classify_institution_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
+    result = dimension.copy()
+    classes = result["categoria"].map(classify_institution)
+    result[INSTITUTION_CLASS_COL] = classes.map(lambda item: item[0])
+    result[IS_UNIVERSITY_COL] = classes.map(lambda item: item[1])
+    return result
+
+
 def database_dimension(
     source: pd.DataFrame,
     mapping: pd.DataFrame,
@@ -446,6 +459,10 @@ def main() -> None:
         dimensions["DIM_REPOSITORIOS"] = classify_repository_dimension(
             dimensions["DIM_REPOSITORIOS"]
         )
+    if "DIM_INSTITUCIONES" in dimensions:
+        dimensions["DIM_INSTITUCIONES"] = classify_institution_dimension(
+            dimensions["DIM_INSTITUCIONES"]
+        )
     dimensions["DIM_BASES_DOCUMENTALES"] = database_dimension(source, mapping)
 
     publications = build_publications(source, mapping)
@@ -489,6 +506,14 @@ def main() -> None:
                     dimensions["DIM_REPOSITORIOS"][REPOSITORY_CLASS_COL].nunique()
                 )
                 if "DIM_REPOSITORIOS" in dimensions
+                else 0,
+            },
+            {
+                "indicador": "clases_institucion",
+                "valor": int(
+                    dimensions["DIM_INSTITUCIONES"][INSTITUTION_CLASS_COL].nunique()
+                )
+                if "DIM_INSTITUCIONES" in dimensions
                 else 0,
             },
             {
@@ -581,6 +606,11 @@ def main() -> None:
   `{UNIVERSITY_REPOSITORY_COL}` para diferenciar repositorios universitarios,
   buscadores académicos, redes académicas, agregadores, indexadores,
   editoriales, revistas, bibliotecas y casos no clasificados.
+- `DIM_INSTITUCIONES` incorpora `{INSTITUTION_CLASS_COL}` y
+  `{IS_UNIVERSITY_COL}` para diferenciar universidades públicas nacionales,
+  universidades privadas nacionales, universidades extranjeras, entidades
+  estatales, centros de investigación, sociedades científicas, revistas o
+  boletines mal ubicados y casos no clasificados.
 - `GRADO_ACADEMICO_PUBLICO` muestra `Pregrado`, `Posgrado` u `Otros`.
 - `NIVEL_ACADEMICO_PUBLICO` muestra `Pregrado`, `Maestría`, `Doctorado`,
   `Suficiencia profesional` u `Otros`.

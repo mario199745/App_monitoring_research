@@ -20,6 +20,12 @@ repositorio y muestra primero la distribución agregada; el detalle se presenta
 en tres rankings desplegables para `Repositorio institucional público`,
 `Repositorio nacional/regional` y `Revista o portal específico`.
 
+`DIM_INSTITUCIONES` clasifica cada entidad con `CLASE_INSTITUCION` y
+`ES_UNIVERSIDAD`. La pestaña `Instituciones` muestra primero la distribución
+por clase y luego rankings desplegables para universidades, entidades públicas,
+centros de investigación, sociedades científicas y revistas o boletines mal
+ubicados.
+
 La interfaz presenta `Otros` por defecto, utiliza nombres documentales sin
 prefijos numéricos y cuenta **6,217 publicaciones consolidadas**. Los 6,574
 registros bibliográficos de origen permanecen disponibles para auditoría.

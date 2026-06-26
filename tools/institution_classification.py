@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import re
+import unicodedata
+
+
+INSTITUTION_CLASS_COL = "CLASE_INSTITUCION"
+IS_UNIVERSITY_COL = "ES_UNIVERSIDAD"
+
+INSTITUTION_CLASSES = {
+    "Universidad publica nacional",
+    "Universidad privada nacional",
+    "Universidad extranjera",
+    "Instituto publico / entidad estatal",
+    "Centro de investigacion / cooperacion",
+    "Sociedad cientifica / asociacion",
+    "Revista / boletin mal ubicado",
+    "Otro / no clasificado",
+}
+
+PRIVATE_NATIONAL_UNIVERSITIES = {
+    "PONTIFICIA UNIVERSIDAD CATOLICA DEL PERU",
+    "UNIVERSIDAD ALAS PERUANAS",
+    "UNIVERSIDAD ANDINA NESTOR CACERES VELASQUEZ",
+    "UNIVERSIDAD ANDINA DEL CUSCO",
+    "UNIVERSIDAD ANTONIO RUIZ DE MONTOYA",
+    "UNIVERSIDAD CATOLICA SAN PABLO",
+    "UNIVERSIDAD CATOLICA SANTO TORIBIO DE MOGROVEJO",
+    "UNIVERSIDAD CATOLICA SEDES SAPIENTIAE",
+    "UNIVERSIDAD CATOLICA DE SANTA MARIA",
+    "UNIVERSIDAD CATOLICA LOS ANGELES DE CHIMBOTE",
+    "UNIVERSIDAD CATOLICA DE LOJA",
+    "UNIVERSIDAD CIENTIFICA DEL PERU",
+    "UNIVERSIDAD CIENTIFICA DEL SUR",
+    "UNIVERSIDAD CONTINENTAL",
+    "UNIVERSIDAD CESAR VALLEJO",
+    "UNIVERSIDAD ESAN",
+    "UNIVERSIDAD INCA GARCILASO DE LA VEGA",
+    "UNIVERSIDAD JESUITA RUIZ DE MONTOYA",
+    "UNIVERSIDAD JOSE CARLOS MARIATEGUI",
+    "UNIVERSIDAD LATINOAMERICANA CIMA",
+    "UNIVERSIDAD LE CORDON BLEU",
+    "UNIVERSIDAD PERUANA CAYETANO HEREDIA",
+    "UNIVERSIDAD PERUANA LOS ANDES",
+    "UNIVERSIDAD PERUANA UNION",
+    "UNIVERSIDAD PERUANA DE CIENCIAS APLICADAS",
+    "UNIVERSIDAD PRIVADA ANTENOR ORREGO",
+    "UNIVERSIDAD PRIVADA ANTONIO GUILLERMO URRELO",
+    "UNIVERSIDAD PRIVADA AUTONOMA DEL SUR",
+    "UNIVERSIDAD PRIVADA NORBERT WIENER",
+    "UNIVERSIDAD PRIVADA DE TACNA",
+    "UNIVERSIDAD PRIVADA DEL NORTE",
+    "UNIVERSIDAD RICARDO PALMA",
+    "UNIVERSIDAD SAN IGANCIO DE LOLYOLA",
+    "UNIVERSIDAD SAN IGNACIO DE LOYOLA",
+    "UNIVERSIDAD SENOR DE SIPAN",
+    "UNIVERSIDAD TECNOLOGICA DE LOS ANDES",
+    "UNIVERSIDAD TECNOLOGICA DEL PERU",
+    "UNIVERSIDAD DE HUANUCO",
+    "UNIVERSIDAD DE LAMBAYEQUE",
+    "UNIVERSIDAD DE LIMA",
+    "UNIVERSIDAD DE PIURA",
+    "UNIVERSIDAD DE SAN MARTIN DE PORRES",
+}
+
+PUBLIC_NATIONAL_UNIVERSITY_ALIASES = {
+    "UNIVERSIDAD DE LA AMAZONIA PERUANA",
+    "UNIVERSIDAD DE PUNO",
+    "UNIVERSIDAD PEDRO RUIZ GALLO",
+}
+
+FOREIGN_UNIVERSITY_MARKERS = {
+    "UNIVERSITY",
+    "UNIVERSIDADE",
+    "UNIVERSITAT",
+    "COLLEGE",
+    "ESCUELA POLITECNICA FEDERAL",
+    "ESCUELA SUPERIOR POLITECNICA",
+    "PONTIFICIA UNIVERSIDAD CATOLICA DEL ECUADOR",
+    "SWISS FEDERAL INSTITUTE OF TECHNOLOGY",
+    "INSTITUTO POLITECNICO Y UNIVERSIDAD ESTATAL DE VIRGINIA",
+}
+
+FOREIGN_UNIVERSITY_NAMES = {
+    "CENTRAL EUROPEAN UNIVERSITY",
+    "ESCUELA DE FORMACION INTERNACIONAL (SIT GRADUATE INSTITUTE)",
+    "INSTITUTO DE BIOCIENCIAS USP",
+    "UNIVERSIDAD CATOLICA DE LOJA",
+    "UNIVERSIDAD FEDERAL DO PARANA",
+    "UNIVERSIDAD MAYOR DE SAN ANDRES",
+    "UNIVERSIDAD NACIONAL DONG HWA",
+    "UNIVERSIDAD NACIONAL DE LA PLATA",
+    "UNIVERSIDAD NACIONAL DEL COMAHUE",
+    "UNIVERSIDAD POLITECNICA DE MADRID",
+    "UNIVERSIDAD DE ALICANTE",
+    "UNIVERSIDAD DE CHILE",
+    "UNIVERSIDAD DE CONCEPCION",
+    "UNIVERSIDAD DE CORDOBA",
+    "UNIVERSIDAD DE GUAYAQUIL",
+    "UNIVERSIDAD DE MONTPELLIER, UNIVERSIDAD PERUANA CAYETANO HERREDIA",
+    "UNIVERSIDAD DE SALAMANCA",
+    "UNIVERSIDAD DE SAO PAULO",
+    "UNIVERSIDAD DE STANFORD",
+    "UNIVERSIDAD DE VALLADOLID",
+    "UNIVERSIDAD DE WISCOSIN-MADISON",
+    "UNIVERSIDAD DE LA RIOJA",
+    "UNIVERSIDAD DE LOS ANDES",
+    "UNIVERSIDAD DEL AZUAY",
+}
+
+PUBLIC_ENTITIES = {
+    "CONSEJO NACIONAL DE CIENCIA TECNOLOGIA E INNOVACION TECNOLOGICA",
+    "INSTITUTO NACIONAL DE INNOVACION AGRARIA",
+    "INSTITUTO PERUANO DE ENERGIA NUCLEAR",
+    "INSTITUTO DE INVESTIGACION DE LA AMAZONIA PERUANA",
+    "INSTITUTO DE INVESTIGACIONES DE LA AMAZONIA PERUANA",
+    "MINISTERIO DEL AMBIENTE",
+}
+
+RESEARCH_CENTERS = {
+    "CENTRO DE COOPERACION INTERNACIONAL EN INVESTIGACION AGRICOLA PARA EL DESARROLLO",
+    "CENTRO DE PREPARACION PARA LA CIENCIA Y TECNOLOGIA",
+    "INSTITUTO DE NEUROCIENCIA COGNITIVA Y TRASLACIONAL (INCYT)",
+    "INSTITUTO DE PESQUISAS E ESTUDOS FLORESTAIS",
+    "INTERNATIONAL INSTITUTE OF SOCIAL STUDIES",
+}
+
+
+def normalize_institution_key(value) -> str:
+    if value is None:
+        return ""
+    text = unicodedata.normalize("NFKD", str(value).strip().upper())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def classify_institution(value) -> tuple[str, str]:
+    key = normalize_institution_key(value)
+    if not key or key == "OTROS":
+        return "Otro / no clasificado", "Indeterminado"
+
+    if any(
+        marker in key
+        for marker in [
+            "BOLETIN",
+            "JOURNAL",
+            "ANNALS",
+            "ANALES",
+            "PROCEEDINGS",
+            "BULLETIN",
+            "CONSERVATION & SOCIETY",
+            "NATURALEZA Y SOCIEDAD",
+            "ZOOLOGISCHE ABHANDLUNGEN",
+            "APUNTES DE CIENCIA & SOCIEDAD",
+        ]
+    ):
+        return "Revista / boletin mal ubicado", "No"
+
+    if (
+        "SOCIEDAD" in key
+        or "SOCIETY" in key
+        or "ASSOCIATION" in key
+        or "ACADEMIA" in key
+        or "ACADEMY" in key
+    ):
+        return "Sociedad cientifica / asociacion", "No"
+
+    if key in PUBLIC_ENTITIES or key.startswith("MINISTERIO "):
+        return "Instituto publico / entidad estatal", "No"
+
+    if key in RESEARCH_CENTERS or key.startswith("CENTRO "):
+        return "Centro de investigacion / cooperacion", "No"
+
+    if key in PRIVATE_NATIONAL_UNIVERSITIES:
+        return "Universidad privada nacional", "Si"
+
+    if key in PUBLIC_NATIONAL_UNIVERSITY_ALIASES:
+        return "Universidad publica nacional", "Si"
+
+    if key.startswith("UNIVERSIDAD NACIONAL "):
+        return "Universidad publica nacional", "Si"
+
+    if key in FOREIGN_UNIVERSITY_NAMES or any(
+        marker in key for marker in FOREIGN_UNIVERSITY_MARKERS
+    ):
+        return "Universidad extranjera", "Si"
+
+    if key.startswith("UNIVERSIDAD ") or key.startswith("PONTIFICIA UNIVERSIDAD "):
+        return "Universidad privada nacional", "Si"
+
+    if key.startswith("INSTITUTO "):
+        return "Centro de investigacion / cooperacion", "No"
+
+    return "Otro / no clasificado", "Indeterminado"

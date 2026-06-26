@@ -2,6 +2,11 @@ from pathlib import Path
 
 import pandas as pd
 
+from institution_classification import (
+    INSTITUTION_CLASS_COL,
+    INSTITUTION_CLASSES,
+    IS_UNIVERSITY_COL,
+)
 from repository_classification import (
     REPOSITORY_CLASS_COL,
     REPOSITORY_CLASSES,
@@ -231,6 +236,28 @@ def main() -> None:
                 raise AssertionError(
                     "ES_REPOSITORIO_UNIVERSITARIO contiene valores inválidos."
                 )
+        if sheet == "DIM_INSTITUCIONES":
+            required_institution_columns = {
+                INSTITUTION_CLASS_COL,
+                IS_UNIVERSITY_COL,
+            }
+            if not required_institution_columns.issubset(dimension.columns):
+                raise AssertionError(
+                    "DIM_INSTITUCIONES no contiene la clasificación requerida."
+                )
+            institution_classes = set(
+                dimension[INSTITUTION_CLASS_COL].dropna().astype(str)
+            )
+            if not institution_classes.issubset(INSTITUTION_CLASSES):
+                raise AssertionError(
+                    "DIM_INSTITUCIONES contiene clases no permitidas: "
+                    + ", ".join(sorted(institution_classes - INSTITUTION_CLASSES))
+                )
+            university_flags = set(
+                dimension[IS_UNIVERSITY_COL].dropna().astype(str)
+            )
+            if not university_flags.issubset({"Si", "No", "Indeterminado"}):
+                raise AssertionError("ES_UNIVERSIDAD contiene valores inválidos.")
 
     territorial = pd.read_excel(
         territorial_file,

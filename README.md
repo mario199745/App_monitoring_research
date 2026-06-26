@@ -17,8 +17,8 @@ líneas, regiones e instituciones.
 `DIM_REPOSITORIOS` clasifica cada repositorio con `CLASE_REPOSITORIO` y
 `ES_REPOSITORIO_UNIVERSITARIO`. La interfaz permite filtrar por clase de
 repositorio y muestra primero la distribución agregada; el detalle se presenta
-en dos rankings desplegables para `Repositorio institucional público` y
-`Revista o portal específico`.
+en tres rankings desplegables para `Repositorio institucional público`,
+`Repositorio nacional / agregador` y `Revista o portal específico`.
 
 La interfaz presenta `Otros` por defecto, utiliza nombres documentales sin
 prefijos numéricos y cuenta **6,217 publicaciones consolidadas**. Los 6,574

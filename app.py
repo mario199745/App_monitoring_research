@@ -553,6 +553,12 @@ institutional_public_repo_summary = repository_summary_by_class(
     "Repositorio institucional publico",
     include_others,
 )
+national_aggregator_repo_summary = repository_summary_by_class(
+    relations.get("repositorio", pd.DataFrame()),
+    df_filtered,
+    "Repositorio nacional / agregador",
+    include_others,
+)
 journal_portal_repo_summary = repository_summary_by_class(
     relations.get("repositorio", pd.DataFrame()),
     df_filtered,
@@ -674,6 +680,20 @@ with tabs[0]:
                 )
         else:
             st.info("No hay repositorios institucionales públicos disponibles.")
+
+        if not national_aggregator_repo_summary.empty:
+            with st.expander("Repositorio nacional / agregador"):
+                st.plotly_chart(
+                    horizontal_bar(
+                        national_aggregator_repo_summary,
+                        "categoria",
+                        "Repositorio nacional / agregador",
+                        max_categories_chart,
+                    ),
+                    width="stretch",
+                )
+        else:
+            st.info("No hay repositorios nacionales o agregadores disponibles.")
 
         if not journal_portal_repo_summary.empty:
             with st.expander("Revista o portal específico"):

@@ -6,6 +6,17 @@ import unicodedata
 
 INSTITUTION_CLASS_COL = "CLASE_INSTITUCION"
 IS_UNIVERSITY_COL = "ES_UNIVERSIDAD"
+PUBLIC_INSTITUTION_CLASS_COL = "CLASE_INSTITUCION_PUBLICA"
+PUBLIC_UNIVERSITY_SUBCLASS_COL = "SUBCLASE_UNIVERSIDAD_PUBLICA"
+
+PUBLIC_INSTITUTION_CLASSES = {
+    "Universidad nacional",
+    "Universidad extranjera",
+    "Instituto público / entidad estatal",
+    "Centro de investigación / cooperación",
+    "Revista / boletín mal ubicado",
+    "Otros",
+}
 
 INSTITUTION_CLASSES = {
     "Universidad publica nacional",
@@ -192,3 +203,31 @@ def classify_institution(value) -> tuple[str, str]:
         return "Centro de investigacion / cooperacion", "No"
 
     return "Otro / no clasificado", "Indeterminado"
+
+
+def classify_public_institution(value) -> tuple[str, str]:
+    """Agrupa la taxonomía técnica para la navegación pública."""
+    technical_class, _ = classify_institution(value)
+    mapping = {
+        "Universidad publica nacional": ("Universidad nacional", "Pública"),
+        "Universidad privada nacional": ("Universidad nacional", "Privada"),
+        "Universidad extranjera": ("Universidad extranjera", "Extranjera"),
+        "Instituto publico / entidad estatal": (
+            "Instituto público / entidad estatal",
+            "No aplica",
+        ),
+        "Centro de investigacion / cooperacion": (
+            "Centro de investigación / cooperación",
+            "No aplica",
+        ),
+        "Sociedad cientifica / asociacion": (
+            "Centro de investigación / cooperación",
+            "No aplica",
+        ),
+        "Revista / boletin mal ubicado": (
+            "Revista / boletín mal ubicado",
+            "No aplica",
+        ),
+        "Otro / no clasificado": ("Otros", "No aplica"),
+    }
+    return mapping[technical_class]

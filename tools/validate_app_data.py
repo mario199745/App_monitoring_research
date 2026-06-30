@@ -6,6 +6,9 @@ from institution_classification import (
     INSTITUTION_CLASS_COL,
     INSTITUTION_CLASSES,
     IS_UNIVERSITY_COL,
+    PUBLIC_INSTITUTION_CLASS_COL,
+    PUBLIC_INSTITUTION_CLASSES,
+    PUBLIC_UNIVERSITY_SUBCLASS_COL,
 )
 from repository_classification import (
     PUBLIC_REPOSITORY_CLASS_COL,
@@ -271,6 +274,8 @@ def main() -> None:
             required_institution_columns = {
                 INSTITUTION_CLASS_COL,
                 IS_UNIVERSITY_COL,
+                PUBLIC_INSTITUTION_CLASS_COL,
+                PUBLIC_UNIVERSITY_SUBCLASS_COL,
             }
             if not required_institution_columns.issubset(dimension.columns):
                 raise AssertionError(
@@ -289,6 +294,38 @@ def main() -> None:
             )
             if not university_flags.issubset({"Si", "No", "Indeterminado"}):
                 raise AssertionError("ES_UNIVERSIDAD contiene valores inválidos.")
+            public_institution_classes = set(
+                dimension[PUBLIC_INSTITUTION_CLASS_COL].dropna().astype(str)
+            )
+            if not public_institution_classes.issubset(
+                PUBLIC_INSTITUTION_CLASSES
+            ):
+                raise AssertionError(
+                    "La clasificación pública de instituciones contiene "
+                    "categorías no permitidas."
+                )
+            required_public_institution_classes = {
+                "Universidad nacional",
+                "Universidad extranjera",
+                "Centro de investigación / cooperación",
+            }
+            if not required_public_institution_classes.issubset(
+                public_institution_classes
+            ):
+                raise AssertionError(
+                    "Faltan agrupaciones públicas principales de instituciones."
+                )
+            university_subclasses = set(
+                dimension[PUBLIC_UNIVERSITY_SUBCLASS_COL]
+                .dropna()
+                .astype(str)
+            )
+            if not university_subclasses.issubset(
+                {"Pública", "Privada", "Extranjera", "No aplica"}
+            ):
+                raise AssertionError(
+                    "SUBCLASE_UNIVERSIDAD_PUBLICA contiene valores inválidos."
+                )
             if (
                 dimension[INSTITUTION_CLASS_COL]
                 .astype(str)

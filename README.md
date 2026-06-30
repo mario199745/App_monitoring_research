@@ -28,6 +28,12 @@ por clase y luego rankings desplegables para universidades, entidades públicas,
 centros de investigación, sociedades científicas y revistas o boletines mal
 ubicados.
 
+La visualización pública utiliza `CLASE_INSTITUCION_PUBLICA`: integra las
+sociedades científicas con los centros de investigación y agrupa las
+universidades nacionales. Dentro de `Universidad nacional`, el selector
+`SUBCLASE_UNIVERSIDAD_PUBLICA` distingue `Pública` y `Privada`; las
+universidades extranjeras se muestran de manera independiente.
+
 Los valores con apariencia de revista o boletín detectados en
 `General_ Institución/Universidad` se migran a `General_ Nombre de revista`.
 La hoja `AUDITORIA_INSTITUCIONES` conserva el valor original, la revista final

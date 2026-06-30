@@ -9,7 +9,10 @@ import pandas as pd
 from institution_classification import (
     INSTITUTION_CLASS_COL,
     IS_UNIVERSITY_COL,
+    PUBLIC_INSTITUTION_CLASS_COL,
+    PUBLIC_UNIVERSITY_SUBCLASS_COL,
     classify_institution,
+    classify_public_institution,
 )
 from repository_classification import (
     PUBLIC_REPOSITORY_CLASS_COL,
@@ -488,6 +491,13 @@ def classify_institution_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
     classes = result["categoria"].map(classify_institution)
     result[INSTITUTION_CLASS_COL] = classes.map(lambda item: item[0])
     result[IS_UNIVERSITY_COL] = classes.map(lambda item: item[1])
+    public_classes = result["categoria"].map(classify_public_institution)
+    result[PUBLIC_INSTITUTION_CLASS_COL] = public_classes.map(
+        lambda item: item[0]
+    )
+    result[PUBLIC_UNIVERSITY_SUBCLASS_COL] = public_classes.map(
+        lambda item: item[1]
+    )
     return result
 
 
@@ -760,7 +770,7 @@ def main() -> None:
             {
                 "indicador": "clases_institucion",
                 "valor": int(
-                    dimensions["DIM_INSTITUCIONES"][INSTITUTION_CLASS_COL].nunique()
+                    dimensions["DIM_INSTITUCIONES"][PUBLIC_INSTITUTION_CLASS_COL].nunique()
                 )
                 if "DIM_INSTITUCIONES" in dimensions
                 else 0,
@@ -876,6 +886,10 @@ def main() -> None:
   universidades privadas nacionales, universidades extranjeras, entidades
   estatales, centros de investigación, sociedades científicas, revistas o
   boletines mal ubicados y casos no clasificados.
+- `{PUBLIC_INSTITUTION_CLASS_COL}` integra sociedades científicas en centros
+  de investigación y agrupa las universidades nacionales. La columna
+  `{PUBLIC_UNIVERSITY_SUBCLASS_COL}` distingue `Pública`, `Privada` y
+  `Extranjera` sin alterar la taxonomía técnica.
 - `GRADO_ACADEMICO_PUBLICO` muestra `Pregrado`, `Posgrado` u `Otros`.
 - `NIVEL_ACADEMICO_PUBLICO` muestra `Pregrado`, `Maestría`, `Doctorado`,
   `Suficiencia profesional` u `Otros`.

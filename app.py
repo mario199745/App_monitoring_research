@@ -10,6 +10,8 @@ import streamlit as st
 
 INSTITUTION_CLASS_COL = "CLASE_INSTITUCION"
 IS_UNIVERSITY_COL = "ES_UNIVERSIDAD"
+PUBLIC_INSTITUTION_CLASS_COL = "CLASE_INSTITUCION_PUBLICA"
+PUBLIC_UNIVERSITY_SUBCLASS_COL = "SUBCLASE_UNIVERSIDAD_PUBLICA"
 REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO"
 UNIVERSITY_REPOSITORY_COL = "ES_REPOSITORIO_UNIVERSITARIO"
 PUBLIC_REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO_PUBLICA"
@@ -94,7 +96,7 @@ RELATION_CONFIG = {
     },
     "institucion_clase": {
         "sheet": "DIM_INSTITUCIONES",
-        "source": INSTITUTION_CLASS_COL,
+        "source": PUBLIC_INSTITUTION_CLASS_COL,
         "label": "Clase de institución",
     },
 }
@@ -188,6 +190,36 @@ def enrich_institution_relation(relation: pd.DataFrame) -> pd.DataFrame:
     if INSTITUTION_CLASS_COL not in result.columns:
         result[INSTITUTION_CLASS_COL] = "Otro / no clasificado"
         result[IS_UNIVERSITY_COL] = "Indeterminado"
+    if PUBLIC_INSTITUTION_CLASS_COL not in result.columns:
+        public_mapping = {
+            "Universidad publica nacional": ("Universidad nacional", "Pública"),
+            "Universidad privada nacional": ("Universidad nacional", "Privada"),
+            "Universidad extranjera": ("Universidad extranjera", "Extranjera"),
+            "Instituto publico / entidad estatal": (
+                "Instituto público / entidad estatal",
+                "No aplica",
+            ),
+            "Centro de investigacion / cooperacion": (
+                "Centro de investigación / cooperación",
+                "No aplica",
+            ),
+            "Sociedad cientifica / asociacion": (
+                "Centro de investigación / cooperación",
+                "No aplica",
+            ),
+            "Revista / boletin mal ubicado": (
+                "Revista / boletín mal ubicado",
+                "No aplica",
+            ),
+            "Otro / no clasificado": ("Otros", "No aplica"),
+        }
+        public_values = result[INSTITUTION_CLASS_COL].map(public_mapping)
+        result[PUBLIC_INSTITUTION_CLASS_COL] = public_values.map(
+            lambda item: item[0]
+        )
+        result[PUBLIC_UNIVERSITY_SUBCLASS_COL] = public_values.map(
+            lambda item: item[1]
+        )
     return result
 
 
@@ -252,11 +284,12 @@ def institution_summary_by_class(
     df_scope: pd.DataFrame,
     institution_class: str,
     include_others: bool,
+    class_column: str = INSTITUTION_CLASS_COL,
 ) -> pd.DataFrame:
-    if relation.empty or INSTITUTION_CLASS_COL not in relation.columns:
+    if relation.empty or class_column not in relation.columns:
         return pd.DataFrame(columns=["categoria", "Publicaciones"])
     filtered_relation = relation[
-        relation[INSTITUTION_CLASS_COL].astype(str).str.strip().eq(institution_class)
+        relation[class_column].astype(str).str.strip().eq(institution_class)
     ].copy()
     return relation_summary(filtered_relation, df_scope, include_others)
 
@@ -535,7 +568,7 @@ try:
     )
     relations["institucion_clase"] = relation_from_column(
         relations["institucion"],
-        INSTITUTION_CLASS_COL,
+        PUBLIC_INSTITUTION_CLASS_COL,
     )
 except Exception as exc:
     st.error(f"No se pudo cargar la información: {exc}")
@@ -635,14 +668,9 @@ public_entity_summary = institution_summary_by_class(
 research_center_summary = institution_summary_by_class(
     relations.get("institucion", pd.DataFrame()),
     df_filtered,
-    "Centro de investigacion / cooperacion",
+    "Centro de investigación / cooperación",
     include_others,
-)
-scientific_society_summary = institution_summary_by_class(
-    relations.get("institucion", pd.DataFrame()),
-    df_filtered,
-    "Sociedad cientifica / asociacion",
-    include_others,
+    PUBLIC_INSTITUTION_CLASS_COL,
 )
 misplaced_journal_institution_summary = institution_summary_by_class(
     relations.get("institucion", pd.DataFrame()),
@@ -897,13 +925,35 @@ with tabs[4]:
     else:
         st.info("No hay clases de institución para mostrar.")
 
+    if not public_university_summary.empty or not private_university_summary.empty:
+        with st.expander("Universidad nacional"):
+            national_university_type = st.selectbox(
+                "Tipo de universidad nacional",
+                ["Pública", "Privada"],
+                key="national_university_subclass",
+            )
+            national_summary = (
+                public_university_summary
+                if national_university_type == "Pública"
+                else private_university_summary
+            )
+            if not national_summary.empty:
+                st.plotly_chart(
+                    horizontal_bar(
+                        national_summary,
+                        "categoria",
+                        f"Universidad nacional - {national_university_type}",
+                        max_categories_chart,
+                    ),
+                    width="stretch",
+                )
+            else:
+                st.info("No hay universidades para la subcategoría seleccionada.")
+
     institution_rankings = [
-        ("Universidad pública nacional", public_university_summary),
-        ("Universidad privada nacional", private_university_summary),
         ("Universidad extranjera", foreign_university_summary),
         ("Instituto público / entidad estatal", public_entity_summary),
         ("Centro de investigación / cooperación", research_center_summary),
-        ("Sociedad científica / asociación", scientific_society_summary),
         ("Revista / boletín mal ubicado", misplaced_journal_institution_summary),
     ]
     for title, summary in institution_rankings:

@@ -14,8 +14,10 @@ from tools.institution_classification import (
     classify_institution,
 )
 from tools.repository_classification import (
+    PUBLIC_REPOSITORY_CLASS_COL,
     REPOSITORY_CLASS_COL,
     UNIVERSITY_REPOSITORY_COL,
+    classify_public_repository,
     classify_repository,
 )
 
@@ -69,7 +71,7 @@ RELATION_CONFIG = {
     },
     "repositorio_clase": {
         "sheet": "DIM_REPOSITORIOS",
-        "source": REPOSITORY_CLASS_COL,
+        "source": PUBLIC_REPOSITORY_CLASS_COL,
         "label": "Clase de repositorio",
     },
     "area": {
@@ -182,6 +184,11 @@ def enrich_repository_relation(relation: pd.DataFrame) -> pd.DataFrame:
         classes = result["categoria"].map(classify_repository)
         result[REPOSITORY_CLASS_COL] = classes.map(lambda item: item[0])
         result[UNIVERSITY_REPOSITORY_COL] = classes.map(lambda item: item[1])
+    if PUBLIC_REPOSITORY_CLASS_COL not in result.columns:
+        public_classes = result["categoria"].map(classify_public_repository)
+        result[PUBLIC_REPOSITORY_CLASS_COL] = public_classes.map(
+            lambda item: item[0]
+        )
     return result
 
 
@@ -241,10 +248,13 @@ def repository_summary_by_class(
     repository_class: str,
     include_others: bool,
 ) -> pd.DataFrame:
-    if relation.empty or REPOSITORY_CLASS_COL not in relation.columns:
+    if relation.empty or PUBLIC_REPOSITORY_CLASS_COL not in relation.columns:
         return pd.DataFrame(columns=["categoria", "Publicaciones"])
     filtered_relation = relation[
-        relation[REPOSITORY_CLASS_COL].astype(str).str.strip().eq(repository_class)
+        relation[PUBLIC_REPOSITORY_CLASS_COL]
+        .astype(str)
+        .str.strip()
+        .eq(repository_class)
     ].copy()
     return relation_summary(filtered_relation, df_scope, include_others)
 
@@ -520,7 +530,7 @@ try:
     )
     relations["repositorio_clase"] = relation_from_column(
         relations["repositorio"],
-        REPOSITORY_CLASS_COL,
+        PUBLIC_REPOSITORY_CLASS_COL,
     )
     relations["institucion"] = enrich_institution_relation(
         relations.get("institucion", pd.DataFrame())
@@ -590,22 +600,28 @@ database_summary = relation_summary(
 )
 region_summary = department_summary(df_filtered, expanded_regions, map_base)
 
-institutional_public_repo_summary = repository_summary_by_class(
+academic_search_repo_summary = repository_summary_by_class(
     relations.get("repositorio", pd.DataFrame()),
     df_filtered,
-    "Repositorio institucional publico",
+    "Buscadores académicos",
     include_others,
 )
-national_aggregator_repo_summary = repository_summary_by_class(
+institutional_repo_summary = repository_summary_by_class(
     relations.get("repositorio", pd.DataFrame()),
     df_filtered,
-    "Repositorio nacional/regional",
+    "Repositorios institucionales",
     include_others,
 )
-journal_portal_repo_summary = repository_summary_by_class(
+university_repo_summary = repository_summary_by_class(
     relations.get("repositorio", pd.DataFrame()),
     df_filtered,
-    "Revista o portal especifico",
+    "Repositorios universitarios",
+    include_others,
+)
+journal_repo_summary = repository_summary_by_class(
+    relations.get("repositorio", pd.DataFrame()),
+    df_filtered,
+    "Revistas",
     include_others,
 )
 repo_class_summary = relation_summary(
@@ -757,47 +773,61 @@ with tabs[0]:
 
     with col_d:
         st.markdown("#### Repositorios")
-        if not institutional_public_repo_summary.empty:
-            with st.expander("Repositorio institucional público"):
+        if not academic_search_repo_summary.empty:
+            with st.expander("Buscadores académicos"):
                 st.plotly_chart(
                     horizontal_bar(
-                        institutional_public_repo_summary,
+                        academic_search_repo_summary,
                         "categoria",
-                        "Repositorio institucional público",
+                        "Buscadores académicos",
                         max_categories_chart,
                     ),
                     width="stretch",
                 )
         else:
-            st.info("No hay repositorios institucionales públicos disponibles.")
+            st.info("No hay buscadores académicos disponibles.")
 
-        if not national_aggregator_repo_summary.empty:
-            with st.expander("Repositorio nacional/regional"):
+        if not institutional_repo_summary.empty:
+            with st.expander("Repositorios institucionales"):
                 st.plotly_chart(
                     horizontal_bar(
-                        national_aggregator_repo_summary,
+                        institutional_repo_summary,
                         "categoria",
-                        "Repositorio nacional/regional",
+                        "Repositorios institucionales",
                         max_categories_chart,
                     ),
                     width="stretch",
                 )
         else:
-            st.info("No hay repositorios nacionales o agregadores disponibles.")
+            st.info("No hay repositorios institucionales disponibles.")
 
-        if not journal_portal_repo_summary.empty:
-            with st.expander("Revista o portal específico"):
+        if not university_repo_summary.empty:
+            with st.expander("Repositorios universitarios"):
                 st.plotly_chart(
                     horizontal_bar(
-                        journal_portal_repo_summary,
+                        university_repo_summary,
                         "categoria",
-                        "Revista o portal específico",
+                        "Repositorios universitarios",
                         max_categories_chart,
                     ),
                     width="stretch",
                 )
         else:
-            st.info("No hay revistas o portales específicos disponibles.")
+            st.info("No hay repositorios universitarios disponibles.")
+
+        if not journal_repo_summary.empty:
+            with st.expander("Revistas"):
+                st.plotly_chart(
+                    horizontal_bar(
+                        journal_repo_summary,
+                        "categoria",
+                        "Revistas",
+                        max_categories_chart,
+                    ),
+                    width="stretch",
+                )
+        else:
+            st.info("No hay revistas disponibles.")
 
 with tabs[1]:
     st.subheader("Distribución territorial")

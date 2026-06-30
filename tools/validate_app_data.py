@@ -8,6 +8,10 @@ from institution_classification import (
     IS_UNIVERSITY_COL,
 )
 from repository_classification import (
+    PUBLIC_REPOSITORY_CLASS_COL,
+    PUBLIC_REPOSITORY_CLASSES,
+    PUBLIC_REPOSITORY_REVIEW_COL,
+    PUBLIC_REPOSITORY_RULE_COL,
     REPOSITORY_CLASS_COL,
     REPOSITORY_CLASSES,
     UNIVERSITY_REPOSITORY_COL,
@@ -215,6 +219,9 @@ def main() -> None:
             raise AssertionError(f"{sheet} contiene identificadores huérfanos.")
         if sheet == "DIM_REPOSITORIOS":
             required_repository_columns = {
+                PUBLIC_REPOSITORY_CLASS_COL,
+                PUBLIC_REPOSITORY_RULE_COL,
+                PUBLIC_REPOSITORY_REVIEW_COL,
                 REPOSITORY_CLASS_COL,
                 UNIVERSITY_REPOSITORY_COL,
             }
@@ -236,6 +243,26 @@ def main() -> None:
             if not university_flags.issubset({"Si", "No", "Indeterminado"}):
                 raise AssertionError(
                     "ES_REPOSITORIO_UNIVERSITARIO contiene valores inválidos."
+                )
+            public_classes = set(
+                dimension[PUBLIC_REPOSITORY_CLASS_COL].dropna().astype(str)
+            )
+            if public_classes != PUBLIC_REPOSITORY_CLASSES:
+                raise AssertionError(
+                    "La clasificación pública de repositorios no contiene "
+                    "exactamente las cuatro categorías requeridas."
+                )
+            review_flags = set(
+                dimension[PUBLIC_REPOSITORY_REVIEW_COL].dropna().astype(str)
+            )
+            if not review_flags.issubset({"Si", "No"}):
+                raise AssertionError(
+                    "REQUIERE_REVISION_REPOSITORIO contiene valores inválidos."
+                )
+            pending = dimension[PUBLIC_REPOSITORY_REVIEW_COL].eq("Si")
+            if dimension.loc[pending, PUBLIC_REPOSITORY_CLASS_COL].notna().any():
+                raise AssertionError(
+                    "Los repositorios pendientes fueron forzados a una clase pública."
                 )
         if sheet == "DIM_INSTITUCIONES":
             required_institution_columns = {

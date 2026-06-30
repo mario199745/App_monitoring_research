@@ -14,11 +14,12 @@ La base principal contiene una fila por `ID_PUBLICACION_PROPUESTA` e incluye
 dimensiones expandidas para bases documentales, repositorios, áreas, ejes,
 líneas, regiones e instituciones.
 
-`DIM_REPOSITORIOS` clasifica cada repositorio con `CLASE_REPOSITORIO` y
-`ES_REPOSITORIO_UNIVERSITARIO`. La interfaz permite filtrar por clase de
-repositorio y muestra primero la distribución agregada; el detalle se presenta
-en tres rankings desplegables para `Repositorio institucional público`,
-`Repositorio nacional/regional` y `Revista o portal específico`.
+`DIM_REPOSITORIOS` conserva la clasificación técnica en `CLASE_REPOSITORIO` y
+presenta una clasificación simplificada en `CLASE_REPOSITORIO_PUBLICA`. La
+interfaz utiliza cuatro grupos: `Buscadores académicos`, `Repositorios
+institucionales`, `Repositorios universitarios` y `Revistas`, con un ranking
+desplegable para cada uno. Los casos ambiguos se marcan en
+`REQUIERE_REVISION_REPOSITORIO` sin forzarlos a una categoría pública.
 
 `DIM_INSTITUCIONES` clasifica cada entidad con `CLASE_INSTITUCION` y
 `ES_UNIVERSIDAD`. La pestaña `Instituciones` muestra primero la distribución

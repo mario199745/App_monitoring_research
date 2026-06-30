@@ -6,6 +6,16 @@ import unicodedata
 
 REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO"
 UNIVERSITY_REPOSITORY_COL = "ES_REPOSITORIO_UNIVERSITARIO"
+PUBLIC_REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO_PUBLICA"
+PUBLIC_REPOSITORY_RULE_COL = "REGLA_CLASIFICACION_REPOSITORIO_PUBLICA"
+PUBLIC_REPOSITORY_REVIEW_COL = "REQUIERE_REVISION_REPOSITORIO"
+
+PUBLIC_REPOSITORY_CLASSES = {
+    "Buscadores académicos",
+    "Repositorios institucionales",
+    "Repositorios universitarios",
+    "Revistas",
+}
 
 REPOSITORY_CLASSES = {
     "Repositorio universitario",
@@ -290,3 +300,29 @@ def classify_repository(value) -> tuple[str, str]:
     ):
         return "Repositorio universitario", "Si"
     return "Otro / no clasificado", "Indeterminado"
+
+
+def classify_public_repository(value) -> tuple[str | None, str, str]:
+    """Reduce la taxonomía técnica a cuatro clases públicas auditables."""
+    technical_class, _ = classify_repository(value)
+    public_mapping = {
+        "Buscador academico": "Buscadores académicos",
+        "Red academica / perfil de autor": "Buscadores académicos",
+        "Base bibliografica / indexador": "Buscadores académicos",
+        "Repositorio nacional/regional": "Buscadores académicos",
+        "Repositorio institucional publico": "Repositorios institucionales",
+        "Biblioteca / archivo digital": "Repositorios institucionales",
+        "Repositorio universitario": "Repositorios universitarios",
+        "Editorial / plataforma de revistas": "Revistas",
+        "Revista o portal especifico": "Revistas",
+    }
+    public_class = public_mapping.get(technical_class)
+    if public_class is None:
+        return None, "REP_PUBLICA_005_PENDIENTE_REVISION", "Si"
+    rule_number = {
+        "Buscadores académicos": "001",
+        "Repositorios institucionales": "002",
+        "Repositorios universitarios": "003",
+        "Revistas": "004",
+    }[public_class]
+    return public_class, f"REP_PUBLICA_{rule_number}", "No"

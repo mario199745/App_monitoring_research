@@ -12,8 +12,12 @@ from institution_classification import (
     classify_institution,
 )
 from repository_classification import (
+    PUBLIC_REPOSITORY_CLASS_COL,
+    PUBLIC_REPOSITORY_REVIEW_COL,
+    PUBLIC_REPOSITORY_RULE_COL,
     REPOSITORY_CLASS_COL,
     UNIVERSITY_REPOSITORY_COL,
+    classify_public_repository,
     classify_repository,
 )
 
@@ -361,6 +365,10 @@ def classify_repository_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
     classes = result["categoria"].map(classify_repository)
     result[REPOSITORY_CLASS_COL] = classes.map(lambda item: item[0])
     result[UNIVERSITY_REPOSITORY_COL] = classes.map(lambda item: item[1])
+    public_classes = result["categoria"].map(classify_public_repository)
+    result[PUBLIC_REPOSITORY_CLASS_COL] = public_classes.map(lambda item: item[0])
+    result[PUBLIC_REPOSITORY_RULE_COL] = public_classes.map(lambda item: item[1])
+    result[PUBLIC_REPOSITORY_REVIEW_COL] = public_classes.map(lambda item: item[2])
     return result
 
 
@@ -604,7 +612,7 @@ def main() -> None:
             {
                 "indicador": "clases_repositorio",
                 "valor": int(
-                    dimensions["DIM_REPOSITORIOS"][REPOSITORY_CLASS_COL].nunique()
+                    dimensions["DIM_REPOSITORIOS"][PUBLIC_REPOSITORY_CLASS_COL].nunique()
                 )
                 if "DIM_REPOSITORIOS" in dimensions
                 else 0,
@@ -712,6 +720,11 @@ def main() -> None:
   `{UNIVERSITY_REPOSITORY_COL}` para diferenciar repositorios universitarios,
   buscadores académicos, redes académicas, agregadores, indexadores,
   editoriales, revistas, bibliotecas y casos no clasificados.
+- `{PUBLIC_REPOSITORY_CLASS_COL}` presenta cuatro categorías públicas:
+  `Buscadores académicos`, `Repositorios institucionales`,
+  `Repositorios universitarios` y `Revistas`. Las columnas
+  `{PUBLIC_REPOSITORY_RULE_COL}` y `{PUBLIC_REPOSITORY_REVIEW_COL}` conservan
+  la regla aplicada y señalan los valores ambiguos que requieren revisión.
 - `DIM_INSTITUCIONES` incorpora `{INSTITUTION_CLASS_COL}` y
   `{IS_UNIVERSITY_COL}` para diferenciar universidades públicas nacionales,
   universidades privadas nacionales, universidades extranjeras, entidades

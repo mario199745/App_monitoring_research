@@ -14,12 +14,38 @@ from tools.institution_classification import (
     classify_institution,
 )
 from tools.repository_classification import (
-    PUBLIC_REPOSITORY_CLASS_COL,
     REPOSITORY_CLASS_COL,
     UNIVERSITY_REPOSITORY_COL,
-    classify_public_repository,
     classify_repository,
 )
+
+try:
+    from tools.repository_classification import (
+        PUBLIC_REPOSITORY_CLASS_COL,
+        classify_public_repository,
+    )
+except ImportError:
+    # Compatibilidad temporal con despliegues que conserven en caché la
+    # versión anterior del módulo. La base vigente ya incluye esta columna.
+    PUBLIC_REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO_PUBLICA"
+
+    def classify_public_repository(value):
+        technical_class, _ = classify_repository(value)
+        public_mapping = {
+            "Buscador academico": "Buscadores académicos",
+            "Red academica / perfil de autor": "Buscadores académicos",
+            "Base bibliografica / indexador": "Buscadores académicos",
+            "Repositorio nacional/regional": "Buscadores académicos",
+            "Repositorio institucional publico": "Repositorios institucionales",
+            "Biblioteca / archivo digital": "Repositorios institucionales",
+            "Repositorio universitario": "Repositorios universitarios",
+            "Editorial / plataforma de revistas": "Revistas",
+            "Revista o portal especifico": "Revistas",
+        }
+        public_class = public_mapping.get(technical_class)
+        return public_class, "COMPATIBILIDAD_DESPLIEGUE", (
+            "No" if public_class else "Si"
+        )
 
 
 st.set_page_config(

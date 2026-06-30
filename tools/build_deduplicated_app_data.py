@@ -375,6 +375,7 @@ def classify_repository_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
 def apply_requested_repository_updates(
     dimension: pd.DataFrame,
     request_file: Path,
+    rule: str,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     required = {
         PUBLICATION_ID,
@@ -382,12 +383,15 @@ def apply_requested_repository_updates(
         "Repositorio_actualizado",
         "Categoria_nueva",
     }
-    updates = pd.read_excel(
-        request_file,
-        sheet_name="Registros_actualizados",
-        dtype="string",
-        engine="openpyxl",
-    )
+    if request_file.suffix.casefold() == ".csv":
+        updates = pd.read_csv(request_file, dtype="string")
+    else:
+        updates = pd.read_excel(
+            request_file,
+            sheet_name="Registros_actualizados",
+            dtype="string",
+            engine="openpyxl",
+        )
     missing = required - set(updates.columns)
     if missing:
         raise ValueError(
@@ -453,9 +457,7 @@ def apply_requested_repository_updates(
         result.at[position, REPOSITORY_CLASS_COL] = technical_class
         result.at[position, UNIVERSITY_REPOSITORY_COL] = university_flag
         result.at[position, PUBLIC_REPOSITORY_CLASS_COL] = public_class
-        result.at[position, PUBLIC_REPOSITORY_RULE_COL] = (
-            "REP_SOLICITADA_20260630"
-        )
+        result.at[position, PUBLIC_REPOSITORY_RULE_COL] = rule
         result.at[position, PUBLIC_REPOSITORY_REVIEW_COL] = "No"
         audit_row = requested.to_dict()
         audit_row.update(
@@ -467,7 +469,8 @@ def apply_requested_repository_updates(
                 ],
                 "CLASE_TECNICA_FINAL": technical_class,
                 "CLASE_PUBLICA_FINAL": public_class,
-                "REGLA_APLICADA": "REP_SOLICITADA_20260630",
+                "REGLA_APLICADA": rule,
+                "ARCHIVO_DECISION": request_file.name,
             }
         )
         audit_rows.append(audit_row)
@@ -587,11 +590,20 @@ def main() -> None:
     project_root = app_root.parent
     data_dir = app_root / "data"
     docs_dir = project_root / "NOTEBOOK" / "docs"
-    repository_request = (
-        data_dir
-        / "_fuentes_tecnicas"
-        / "repositorios_reclasificados_solicitados.xlsx"
-    )
+    repository_requests = [
+        (
+            data_dir
+            / "_fuentes_tecnicas"
+            / "repositorios_reclasificados_solicitados.xlsx",
+            "REP_SOLICITADA_20260630",
+        ),
+        (
+            data_dir
+            / "_fuentes_tecnicas"
+            / "repositorios_reclasificados_evaluacion.csv",
+            "REP_EVALUADA_20260630",
+        ),
+    ]
 
     cleaning_dir = latest_directory(
         project_root / "NOTEBOOK" / "salidas_limpieza",
@@ -681,11 +693,19 @@ def main() -> None:
         dimensions["DIM_REPOSITORIOS"] = classify_repository_dimension(
             dimensions["DIM_REPOSITORIOS"]
         )
-        dimensions["DIM_REPOSITORIOS"], repository_update_audit = (
-            apply_requested_repository_updates(
-                dimensions["DIM_REPOSITORIOS"],
-                repository_request,
+        repository_audits = []
+        for repository_request, repository_rule in repository_requests:
+            dimensions["DIM_REPOSITORIOS"], request_audit = (
+                apply_requested_repository_updates(
+                    dimensions["DIM_REPOSITORIOS"],
+                    repository_request,
+                    repository_rule,
+                )
             )
+            repository_audits.append(request_audit)
+        repository_update_audit = pd.concat(
+            repository_audits,
+            ignore_index=True,
         )
     dimensions["DIM_INSTITUCIONES"] = classify_institution_dimension(
         institution_dimension(source, mapping)
@@ -821,7 +841,7 @@ def main() -> None:
 - **Base homologada:** `{homologated_source}`
 - **Diagnóstico de deduplicación:** `{dedup_source}`
 - **Base territorial de origen:** `{territorial_source}`
-- **Solicitud de reclasificación de repositorios:** `{repository_request}`
+- **Fuentes de reclasificación de repositorios:** {', '.join(f'`{path}`' for path, _ in repository_requests)}
 - **Base principal:** `{app_output.name}`
 - **Base territorial:** `{territorial_output.name}`
 - **Registros de origen:** {len(source):,}

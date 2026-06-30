@@ -16,10 +16,11 @@ líneas, regiones e instituciones.
 
 `DIM_REPOSITORIOS` conserva la clasificación técnica en `CLASE_REPOSITORIO` y
 presenta una clasificación simplificada en `CLASE_REPOSITORIO_PUBLICA`. La
-interfaz utiliza cuatro grupos: `Buscadores académicos`, `Repositorios
-institucionales`, `Repositorios universitarios`, `Revistas` y `Otros`, con un
-ranking desplegable para cada uno. Los casos ambiguos permanecen visibles en
-`Otros` y se marcan en `REQUIERE_REVISION_REPOSITORIO`.
+interfaz utiliza cinco grupos: `Buscadores académicos`, `Repositorios
+institucionales`, `Repositorios universitarios`, `Revistas` y `Otros`. La vista
+presenta la distribución agregada por clase, sin rankings desplegables. Los
+casos no identificados permanecen visibles en `Otros` y se marcan en
+`REQUIERE_REVISION_REPOSITORIO`.
 
 `DIM_INSTITUCIONES` clasifica cada entidad con `CLASE_INSTITUCION` y
 `ES_UNIVERSIDAD`. La pestaña `Instituciones` muestra primero la distribución
@@ -56,6 +57,10 @@ Los indicadores y ejes cuantitativos se presentan como `N° de ...`. El mapa
 territorial también funciona como filtro: permite seleccionar uno o varios
 departamentos, sincroniza la selección con `Región normalizada` y actualiza
 indicadores, gráficos, tabla y descargas.
+
+Los millares visibles se separan mediante espacio, por ejemplo `6 217`. La
+cabecera superior no muestra la cantidad de bases documentales; esa
+distribución permanece disponible en la vista general.
 
 La navegación incluye una pestaña específica de `Instituciones`, separada de
 la sección temática, para consultar publicaciones por institución o

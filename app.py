@@ -182,7 +182,7 @@ def non_empty_mask(series: pd.Series) -> pd.Series:
 
 def human_int(value) -> str:
     try:
-        return f"{int(value):,}".replace(",", ".")
+        return f"{int(value):,}".replace(",", " ")
     except Exception:
         return str(value)
 
@@ -500,13 +500,16 @@ def to_excel_bytes(
 
 
 def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
-    plot_data = data.head(limit).sort_values("Publicaciones")
+    plot_data = data.head(limit).sort_values("Publicaciones").copy()
+    plot_data["Publicaciones_formato"] = plot_data["Publicaciones"].map(
+        human_int
+    )
     figure = px.bar(
         plot_data,
         x="Publicaciones",
         y=category,
         orientation="h",
-        text="Publicaciones",
+        text="Publicaciones_formato",
         title=title,
         color_discrete_sequence=["#256d5b"],
         labels={"Publicaciones": "N° de Publicaciones"},
@@ -517,6 +520,13 @@ def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
         xaxis_title="N° de Publicaciones",
         yaxis_title="",
         margin=dict(l=10, r=10, t=45, b=10),
+        separators=", ",
+    )
+    figure.update_traces(
+        texttemplate="%{text}",
+        hovertemplate=(
+            f"{category}: %{{y}}<br>N° de Publicaciones: %{{x:,.0f}}<extra></extra>"
+        ),
     )
     return figure
 
@@ -626,36 +636,6 @@ database_summary = relation_summary(
 )
 region_summary = department_summary(df_filtered, expanded_regions, map_base)
 
-academic_search_repo_summary = repository_summary_by_class(
-    relations.get("repositorio", pd.DataFrame()),
-    df_filtered,
-    "Buscadores académicos",
-    include_others,
-)
-institutional_repo_summary = repository_summary_by_class(
-    relations.get("repositorio", pd.DataFrame()),
-    df_filtered,
-    "Repositorios institucionales",
-    include_others,
-)
-university_repo_summary = repository_summary_by_class(
-    relations.get("repositorio", pd.DataFrame()),
-    df_filtered,
-    "Repositorios universitarios",
-    include_others,
-)
-journal_repo_summary = repository_summary_by_class(
-    relations.get("repositorio", pd.DataFrame()),
-    df_filtered,
-    "Revistas",
-    include_others,
-)
-other_repo_summary = repository_summary_by_class(
-    relations.get("repositorio", pd.DataFrame()),
-    df_filtered,
-    "Otros",
-    include_others,
-)
 repo_class_summary = relation_summary(
     relations.get("repositorio_clase", pd.DataFrame()),
     df_filtered,
@@ -731,23 +711,17 @@ area_count = (
     if not area_summary.empty
     else 0
 )
-database_count = (
-    int(database_summary["categoria"].nunique())
-    if not database_summary.empty
-    else 0
-)
 repo_class_count = (
     int(repo_class_summary["categoria"].nunique())
     if not repo_class_summary.empty
     else 0
 )
 
-metrics = st.columns(5)
+metrics = st.columns(4)
 metrics[0].metric("N° de Publicaciones", human_int(unique_publications))
 metrics[1].metric("N° de Departamentos", human_int(regions_with_data))
 metrics[2].metric("N° de Áreas temáticas", human_int(area_count))
-metrics[3].metric("N° de Bases documentales", human_int(database_count))
-metrics[4].metric("N° de Clases de repositorio", human_int(repo_class_count))
+metrics[3].metric("N° de Clases de repositorio", human_int(repo_class_count))
 
 st.caption(
     "Una publicación puede pertenecer a varias áreas, ejes, líneas, regiones "
@@ -788,93 +762,21 @@ with tabs[0]:
         else:
             st.info("No hay clases de repositorio disponibles.")
 
-    col_c, col_d = st.columns(2)
-    with col_c:
-        if not database_summary.empty:
-            st.plotly_chart(
-                horizontal_bar(
-                    database_summary,
-                    "categoria",
-                    "Publicaciones por base documental",
-                    max_categories_chart,
-                ),
-                width="stretch",
-            )
-        else:
-            st.info("No hay datos para mostrar.")
-
-    with col_d:
-        st.markdown("#### Repositorios")
-        if not academic_search_repo_summary.empty:
-            with st.expander("Buscadores académicos"):
-                st.plotly_chart(
-                    horizontal_bar(
-                        academic_search_repo_summary,
-                        "categoria",
-                        "Buscadores académicos",
-                        max_categories_chart,
-                    ),
-                    width="stretch",
-                )
-        else:
-            st.info("No hay buscadores académicos disponibles.")
-
-        if not institutional_repo_summary.empty:
-            with st.expander("Repositorios institucionales"):
-                st.plotly_chart(
-                    horizontal_bar(
-                        institutional_repo_summary,
-                        "categoria",
-                        "Repositorios institucionales",
-                        max_categories_chart,
-                    ),
-                    width="stretch",
-                )
-        else:
-            st.info("No hay repositorios institucionales disponibles.")
-
-        if not university_repo_summary.empty:
-            with st.expander("Repositorios universitarios"):
-                st.plotly_chart(
-                    horizontal_bar(
-                        university_repo_summary,
-                        "categoria",
-                        "Repositorios universitarios",
-                        max_categories_chart,
-                    ),
-                    width="stretch",
-                )
-        else:
-            st.info("No hay repositorios universitarios disponibles.")
-
-        if not journal_repo_summary.empty:
-            with st.expander("Revistas"):
-                st.plotly_chart(
-                    horizontal_bar(
-                        journal_repo_summary,
-                        "categoria",
-                        "Revistas",
-                        max_categories_chart,
-                    ),
-                    width="stretch",
-                )
-        else:
-            st.info("No hay revistas disponibles.")
-
-        if include_others and not other_repo_summary.empty:
-            with st.expander("Otros"):
-                st.plotly_chart(
-                    horizontal_bar(
-                        other_repo_summary,
-                        "categoria",
-                        "Otros repositorios y fuentes",
-                        max_categories_chart,
-                    ),
-                    width="stretch",
-                )
+    if not database_summary.empty:
+        st.plotly_chart(
+            horizontal_bar(
+                database_summary,
+                "categoria",
+                "Publicaciones por base documental",
+                max_categories_chart,
+            ),
+            width="stretch",
+        )
+    else:
+        st.info("No hay datos para mostrar.")
 
 with tabs[1]:
-    st.subheader("Distribución territorial")
+    st.subheader("Ámbito de intervención de las investigaciones")
     selected_sidebar_regions = st.session_state.get(REGION_FILTER_KEY, [])
     if selected_sidebar_regions:
         selected_text = ", ".join(selected_sidebar_regions)
@@ -921,6 +823,7 @@ with tabs[1]:
         height=680,
         margin=dict(l=0, r=0, t=0, b=0),
         clickmode="event+select",
+        separators=", ",
     )
     map_event = st.plotly_chart(
         map_figure,
@@ -986,6 +889,7 @@ with tabs[2]:
             height=450,
             xaxis_title="Año de publicación o aprobación",
             yaxis_title="N° de Publicaciones",
+            separators=", ",
         )
         st.plotly_chart(time_figure, width="stretch")
 

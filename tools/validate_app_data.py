@@ -331,17 +331,21 @@ def main() -> None:
     }
     if not required_repository_audit.issubset(repository_audit.columns):
         raise AssertionError("AUDITORIA_REPOSITORIOS no cumple el contrato mínimo.")
-    if len(repository_audit) != 103 or repository_audit[RECORD_ID_COL].duplicated().any():
+    if len(repository_audit) != 135 or repository_audit[RECORD_ID_COL].duplicated().any():
         raise AssertionError(
-            "AUDITORIA_REPOSITORIOS no conserva las 103 decisiones solicitadas."
+            "AUDITORIA_REPOSITORIOS no conserva las 135 decisiones aprobadas."
         )
     if repository_audit["Repositorio_original"].str.strip().str.casefold().eq(
         "otros"
     ).any():
         raise AssertionError("La actualización modificó el valor exacto Otros.")
-    if not repository_audit["REGLA_APLICADA"].eq(
-        "REP_SOLICITADA_20260630"
-    ).all():
+    allowed_repository_rules = {
+        "REP_SOLICITADA_20260630",
+        "REP_EVALUADA_20260630",
+    }
+    if not set(repository_audit["REGLA_APLICADA"].dropna()).issubset(
+        allowed_repository_rules
+    ):
         raise AssertionError("AUDITORIA_REPOSITORIOS contiene reglas inesperadas.")
     repository_dimension = pd.read_excel(
         app_file,
@@ -364,6 +368,20 @@ def main() -> None:
     ).all():
         raise AssertionError(
             "Los nombres o clases solicitados no coinciden con DIM_REPOSITORIOS."
+        )
+    remaining_other_names = set(
+        repository_dimension.loc[
+            repository_dimension[PUBLIC_REPOSITORY_CLASS_COL].eq("Otros"),
+            "categoria",
+        ]
+        .dropna()
+        .astype(str)
+        .str.strip()
+    )
+    if remaining_other_names != {"Otros"}:
+        raise AssertionError(
+            "Persisten fuentes identificables en la categoría pública Otros: "
+            + ", ".join(sorted(remaining_other_names - {"Otros"}))
         )
 
     territorial = pd.read_excel(

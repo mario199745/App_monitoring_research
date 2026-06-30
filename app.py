@@ -856,7 +856,7 @@ with tabs[2]:
         st.plotly_chart(time_figure, width="stretch")
 
 with tabs[3]:
-    st.subheader("Temas")
+    st.subheader("Vinculación ANIFF 2026 - 2030")
     if not area_summary.empty:
         st.plotly_chart(
             horizontal_bar(

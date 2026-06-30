@@ -372,6 +372,114 @@ def classify_repository_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def apply_requested_repository_updates(
+    dimension: pd.DataFrame,
+    request_file: Path,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    required = {
+        PUBLICATION_ID,
+        "Repositorio_original",
+        "Repositorio_actualizado",
+        "Categoria_nueva",
+    }
+    updates = pd.read_excel(
+        request_file,
+        sheet_name="Registros_actualizados",
+        dtype="string",
+        engine="openpyxl",
+    )
+    missing = required - set(updates.columns)
+    if missing:
+        raise ValueError(
+            "La solicitud de repositorios no contiene: "
+            + ", ".join(sorted(missing))
+        )
+    updates = updates.copy()
+    for column in required:
+        updates[column] = updates[column].astype("string").str.strip()
+    if updates[PUBLICATION_ID].duplicated().any():
+        raise ValueError("La solicitud contiene publicaciones duplicadas.")
+    if updates["Repositorio_original"].str.casefold().eq("otros").any():
+        raise ValueError("El valor exacto Otros no puede ser reclasificado.")
+    allowed = {
+        "Buscadores académicos",
+        "Repositorios institucionales",
+        "Repositorios universitarios",
+        "Revistas",
+    }
+    invalid = set(updates["Categoria_nueva"].dropna()) - allowed
+    if invalid:
+        raise ValueError(
+            "La solicitud contiene categorías no permitidas: "
+            + ", ".join(sorted(invalid))
+        )
+
+    result = dimension.copy()
+    audit_rows = []
+    technical_mapping = {
+        "Buscadores académicos": ("Buscador academico", "No"),
+        "Repositorios institucionales": (
+            "Repositorio institucional publico",
+            "No",
+        ),
+        "Repositorios universitarios": ("Repositorio universitario", "Si"),
+        "Revistas": ("Revista o portal especifico", "No"),
+    }
+    for _, requested in updates.iterrows():
+        mask = (
+            result[PUBLICATION_ID].astype(str).eq(str(requested[PUBLICATION_ID]))
+            & result["categoria"]
+            .astype("string")
+            .str.strip()
+            .eq(requested["Repositorio_original"])
+        )
+        positions = result.index[mask].tolist()
+        if len(positions) != 1:
+            raise ValueError(
+                "Se esperaba una coincidencia para "
+                f"{requested[PUBLICATION_ID]} / "
+                f"{requested['Repositorio_original']} y se obtuvieron "
+                f"{len(positions)}."
+            )
+        position = positions[0]
+        previous = result.loc[position].copy()
+        public_class = requested["Categoria_nueva"]
+        technical_class, university_flag = technical_mapping[public_class]
+        result.at[position, "categoria"] = requested["Repositorio_actualizado"]
+        if "General_ Repositorio" in result.columns:
+            result.at[position, "General_ Repositorio"] = requested[
+                "Repositorio_actualizado"
+            ]
+        result.at[position, REPOSITORY_CLASS_COL] = technical_class
+        result.at[position, UNIVERSITY_REPOSITORY_COL] = university_flag
+        result.at[position, PUBLIC_REPOSITORY_CLASS_COL] = public_class
+        result.at[position, PUBLIC_REPOSITORY_RULE_COL] = (
+            "REP_SOLICITADA_20260630"
+        )
+        result.at[position, PUBLIC_REPOSITORY_REVIEW_COL] = "No"
+        audit_row = requested.to_dict()
+        audit_row.update(
+            {
+                "CLASE_TECNICA_ANTERIOR": previous[REPOSITORY_CLASS_COL],
+                "CLASE_PUBLICA_ANTERIOR": previous[PUBLIC_REPOSITORY_CLASS_COL],
+                "REQUIERE_REVISION_ANTERIOR": previous[
+                    PUBLIC_REPOSITORY_REVIEW_COL
+                ],
+                "CLASE_TECNICA_FINAL": technical_class,
+                "CLASE_PUBLICA_FINAL": public_class,
+                "REGLA_APLICADA": "REP_SOLICITADA_20260630",
+            }
+        )
+        audit_rows.append(audit_row)
+
+    if result.duplicated([PUBLICATION_ID, "categoria"]).any():
+        raise ValueError(
+            "La actualización genera relaciones repositorio-publicación duplicadas."
+        )
+    result["orden_categoria"] = result.groupby(PUBLICATION_ID).cumcount() + 1
+    return result, pd.DataFrame(audit_rows)
+
+
 def classify_institution_dimension(dimension: pd.DataFrame) -> pd.DataFrame:
     result = dimension.copy()
     classes = result["categoria"].map(classify_institution)
@@ -479,6 +587,11 @@ def main() -> None:
     project_root = app_root.parent
     data_dir = app_root / "data"
     docs_dir = project_root / "NOTEBOOK" / "docs"
+    repository_request = (
+        data_dir
+        / "_fuentes_tecnicas"
+        / "repositorios_reclasificados_solicitados.xlsx"
+    )
 
     cleaning_dir = latest_directory(
         project_root / "NOTEBOOK" / "salidas_limpieza",
@@ -568,6 +681,12 @@ def main() -> None:
         dimensions["DIM_REPOSITORIOS"] = classify_repository_dimension(
             dimensions["DIM_REPOSITORIOS"]
         )
+        dimensions["DIM_REPOSITORIOS"], repository_update_audit = (
+            apply_requested_repository_updates(
+                dimensions["DIM_REPOSITORIOS"],
+                repository_request,
+            )
+        )
     dimensions["DIM_INSTITUCIONES"] = classify_institution_dimension(
         institution_dimension(source, mapping)
     )
@@ -607,6 +726,7 @@ def main() -> None:
             {"indicador": "tesis_con_campos_academicos", "valor": len(academic_fields)},
             {"indicador": "conflictos_academicos_auditados", "valor": len(academic_audit)},
             {"indicador": "migraciones_institucion_revista", "valor": len(institution_audit)},
+            {"indicador": "repositorios_reclasificados_solicitados", "valor": len(repository_update_audit)},
             {"indicador": "claves_registro_maestro", "valor": len(master_registry)},
             {"indicador": "fusiones_ids_historicos", "valor": len(id_merges)},
             {
@@ -643,6 +763,7 @@ def main() -> None:
             {"hoja": "DECISIONES_REVISADAS", "proposito": "Adjudicación de los 72 pares", "clave": "id_registro_a + id_registro_b"},
             {"hoja": "AUDITORIA_ACADEMICA", "proposito": "Combinaciones académicas resueltas", "clave": PUBLICATION_ID},
             {"hoja": "AUDITORIA_INSTITUCIONES", "proposito": "Migración de revistas o boletines desde institución hacia nombre de revista", "clave": RECORD_ID},
+            {"hoja": "AUDITORIA_REPOSITORIOS", "proposito": "Nombres y clases de repositorio actualizados por solicitud", "clave": PUBLICATION_ID},
             {"hoja": "REGISTRO_MAESTRO_IDS", "proposito": "Claves de identidad persistentes", "clave": "CLAVE_IDENTIDAD"},
             {"hoja": "FUSIONES_IDS", "proposito": "Alias de identificadores históricos", "clave": "ID_PUBLICACION_ALIAS"},
             *[
@@ -666,6 +787,9 @@ def main() -> None:
         )
         institution_audit.to_excel(
             writer, sheet_name="AUDITORIA_INSTITUCIONES", index=False
+        )
+        repository_update_audit.to_excel(
+            writer, sheet_name="AUDITORIA_REPOSITORIOS", index=False
         )
         master_registry.to_excel(
             writer, sheet_name="REGISTRO_MAESTRO_IDS", index=False
@@ -697,6 +821,7 @@ def main() -> None:
 - **Base homologada:** `{homologated_source}`
 - **Diagnóstico de deduplicación:** `{dedup_source}`
 - **Base territorial de origen:** `{territorial_source}`
+- **Solicitud de reclasificación de repositorios:** `{repository_request}`
 - **Base principal:** `{app_output.name}`
 - **Base territorial:** `{territorial_output.name}`
 - **Registros de origen:** {len(source):,}
@@ -706,6 +831,7 @@ def main() -> None:
 - **Tesis con clasificación académica pública:** {len(academic_fields):,}
 - **Combinaciones académicas auditadas:** {len(academic_audit):,}
 - **Migraciones institución-revista auditadas:** {len(institution_audit):,}
+- **Repositorios actualizados por solicitud:** {len(repository_update_audit):,}
 - **Claves persistentes registradas:** {len(master_registry):,}
 - **Fusiones de identificadores históricos:** {len(id_merges):,}
 
@@ -738,6 +864,9 @@ def main() -> None:
 - `AUDITORIA_INSTITUCIONES` conserva los valores de revista o boletín
   detectados en `General_ Institución/Universidad`, su migración hacia
   `General_ Nombre de revista` y la institución final asignada.
+- `AUDITORIA_REPOSITORIOS` conserva los 103 nombres originales, nombres
+  actualizados, clases anteriores, clases finales y la regla solicitada. El
+  valor exacto `Otros` está protegido y no se modifica.
 - `HUELLA_PUBLICACION_PERSISTENTE` identifica de forma estable cada código.
 - `REGISTRO_MAESTRO_IDS` relaciona DOI, URL, datos bibliográficos y registros
   con su identificador persistente.

@@ -78,6 +78,7 @@ def main() -> None:
             "DECISIONES_REVISADAS",
             "AUDITORIA_ACADEMICA",
             "AUDITORIA_INSTITUCIONES",
+            "AUDITORIA_REPOSITORIOS",
             "REGISTRO_MAESTRO_IDS",
             "FUSIONES_IDS",
             *REQUIRED_DIMENSIONS,
@@ -312,6 +313,58 @@ def main() -> None:
     }
     if not required_audit_columns.issubset(institution_audit.columns):
         raise AssertionError("AUDITORIA_INSTITUCIONES no cumple el contrato mínimo.")
+
+    repository_audit = pd.read_excel(
+        app_file,
+        sheet_name="AUDITORIA_REPOSITORIOS",
+        dtype="string",
+        engine="openpyxl",
+    )
+    required_repository_audit = {
+        RECORD_ID_COL,
+        "Repositorio_original",
+        "Repositorio_actualizado",
+        "Categoria_nueva",
+        "CLASE_PUBLICA_ANTERIOR",
+        "CLASE_PUBLICA_FINAL",
+        "REGLA_APLICADA",
+    }
+    if not required_repository_audit.issubset(repository_audit.columns):
+        raise AssertionError("AUDITORIA_REPOSITORIOS no cumple el contrato mínimo.")
+    if len(repository_audit) != 103 or repository_audit[RECORD_ID_COL].duplicated().any():
+        raise AssertionError(
+            "AUDITORIA_REPOSITORIOS no conserva las 103 decisiones solicitadas."
+        )
+    if repository_audit["Repositorio_original"].str.strip().str.casefold().eq(
+        "otros"
+    ).any():
+        raise AssertionError("La actualización modificó el valor exacto Otros.")
+    if not repository_audit["REGLA_APLICADA"].eq(
+        "REP_SOLICITADA_20260630"
+    ).all():
+        raise AssertionError("AUDITORIA_REPOSITORIOS contiene reglas inesperadas.")
+    repository_dimension = pd.read_excel(
+        app_file,
+        sheet_name="DIM_REPOSITORIOS",
+        dtype="string",
+        engine="openpyxl",
+    )
+    verified_updates = repository_audit.merge(
+        repository_dimension[
+            [RECORD_ID_COL, "categoria", PUBLIC_REPOSITORY_CLASS_COL]
+        ],
+        left_on=[RECORD_ID_COL, "Repositorio_actualizado"],
+        right_on=[RECORD_ID_COL, "categoria"],
+        how="left",
+        validate="one_to_one",
+    )
+    if verified_updates[PUBLIC_REPOSITORY_CLASS_COL].isna().any() or not (
+        verified_updates[PUBLIC_REPOSITORY_CLASS_COL]
+        == verified_updates["Categoria_nueva"]
+    ).all():
+        raise AssertionError(
+            "Los nombres o clases solicitados no coinciden con DIM_REPOSITORIOS."
+        )
 
     territorial = pd.read_excel(
         territorial_file,

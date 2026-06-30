@@ -8,44 +8,11 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from tools.institution_classification import (
-    INSTITUTION_CLASS_COL,
-    IS_UNIVERSITY_COL,
-    classify_institution,
-)
-from tools.repository_classification import (
-    REPOSITORY_CLASS_COL,
-    UNIVERSITY_REPOSITORY_COL,
-    classify_repository,
-)
-
-try:
-    from tools.repository_classification import (
-        PUBLIC_REPOSITORY_CLASS_COL,
-        classify_public_repository,
-    )
-except ImportError:
-    # Compatibilidad temporal con despliegues que conserven en caché la
-    # versión anterior del módulo. La base vigente ya incluye esta columna.
-    PUBLIC_REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO_PUBLICA"
-
-    def classify_public_repository(value):
-        technical_class, _ = classify_repository(value)
-        public_mapping = {
-            "Buscador academico": "Buscadores académicos",
-            "Red academica / perfil de autor": "Buscadores académicos",
-            "Base bibliografica / indexador": "Buscadores académicos",
-            "Repositorio nacional/regional": "Buscadores académicos",
-            "Repositorio institucional publico": "Repositorios institucionales",
-            "Biblioteca / archivo digital": "Repositorios institucionales",
-            "Repositorio universitario": "Repositorios universitarios",
-            "Editorial / plataforma de revistas": "Revistas",
-            "Revista o portal especifico": "Revistas",
-        }
-        public_class = public_mapping.get(technical_class, "Otros")
-        return public_class, "COMPATIBILIDAD_DESPLIEGUE", (
-            "Si" if public_class == "Otros" else "No"
-        )
+INSTITUTION_CLASS_COL = "CLASE_INSTITUCION"
+IS_UNIVERSITY_COL = "ES_UNIVERSIDAD"
+REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO"
+UNIVERSITY_REPOSITORY_COL = "ES_REPOSITORIO_UNIVERSITARIO"
+PUBLIC_REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO_PUBLICA"
 
 
 st.set_page_config(
@@ -207,14 +174,10 @@ def enrich_repository_relation(relation: pd.DataFrame) -> pd.DataFrame:
         return relation
     result = relation.copy()
     if REPOSITORY_CLASS_COL not in result.columns:
-        classes = result["categoria"].map(classify_repository)
-        result[REPOSITORY_CLASS_COL] = classes.map(lambda item: item[0])
-        result[UNIVERSITY_REPOSITORY_COL] = classes.map(lambda item: item[1])
+        result[REPOSITORY_CLASS_COL] = "Otro / no clasificado"
+        result[UNIVERSITY_REPOSITORY_COL] = "Indeterminado"
     if PUBLIC_REPOSITORY_CLASS_COL not in result.columns:
-        public_classes = result["categoria"].map(classify_public_repository)
-        result[PUBLIC_REPOSITORY_CLASS_COL] = public_classes.map(
-            lambda item: item[0]
-        )
+        result[PUBLIC_REPOSITORY_CLASS_COL] = "Otros"
     return result
 
 
@@ -223,9 +186,8 @@ def enrich_institution_relation(relation: pd.DataFrame) -> pd.DataFrame:
         return relation
     result = relation.copy()
     if INSTITUTION_CLASS_COL not in result.columns:
-        classes = result["categoria"].map(classify_institution)
-        result[INSTITUTION_CLASS_COL] = classes.map(lambda item: item[0])
-        result[IS_UNIVERSITY_COL] = classes.map(lambda item: item[1])
+        result[INSTITUTION_CLASS_COL] = "Otro / no clasificado"
+        result[IS_UNIVERSITY_COL] = "Indeterminado"
     return result
 
 

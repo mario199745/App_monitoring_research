@@ -17,9 +17,9 @@ líneas, regiones e instituciones.
 `DIM_REPOSITORIOS` conserva la clasificación técnica en `CLASE_REPOSITORIO` y
 presenta una clasificación simplificada en `CLASE_REPOSITORIO_PUBLICA`. La
 interfaz utiliza cuatro grupos: `Buscadores académicos`, `Repositorios
-institucionales`, `Repositorios universitarios` y `Revistas`, con un ranking
-desplegable para cada uno. Los casos ambiguos se marcan en
-`REQUIERE_REVISION_REPOSITORIO` sin forzarlos a una categoría pública.
+institucionales`, `Repositorios universitarios`, `Revistas` y `Otros`, con un
+ranking desplegable para cada uno. Los casos ambiguos permanecen visibles en
+`Otros` y se marcan en `REQUIERE_REVISION_REPOSITORIO`.
 
 `DIM_INSTITUCIONES` clasifica cada entidad con `CLASE_INSTITUCION` y
 `ES_UNIVERSIDAD`. La pestaña `Instituciones` muestra primero la distribución

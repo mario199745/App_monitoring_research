@@ -720,9 +720,9 @@ def main() -> None:
   `{UNIVERSITY_REPOSITORY_COL}` para diferenciar repositorios universitarios,
   buscadores académicos, redes académicas, agregadores, indexadores,
   editoriales, revistas, bibliotecas y casos no clasificados.
-- `{PUBLIC_REPOSITORY_CLASS_COL}` presenta cuatro categorías públicas:
+- `{PUBLIC_REPOSITORY_CLASS_COL}` presenta cinco categorías públicas:
   `Buscadores académicos`, `Repositorios institucionales`,
-  `Repositorios universitarios` y `Revistas`. Las columnas
+  `Repositorios universitarios`, `Revistas` y `Otros`. Las columnas
   `{PUBLIC_REPOSITORY_RULE_COL}` y `{PUBLIC_REPOSITORY_REVIEW_COL}` conservan
   la regla aplicada y señalan los valores ambiguos que requieren revisión.
 - `DIM_INSTITUCIONES` incorpora `{INSTITUTION_CLASS_COL}` y

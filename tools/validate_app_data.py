@@ -250,7 +250,7 @@ def main() -> None:
             if public_classes != PUBLIC_REPOSITORY_CLASSES:
                 raise AssertionError(
                     "La clasificación pública de repositorios no contiene "
-                    "exactamente las cuatro categorías requeridas."
+                    "exactamente las categorías públicas requeridas."
                 )
             review_flags = set(
                 dimension[PUBLIC_REPOSITORY_REVIEW_COL].dropna().astype(str)
@@ -260,9 +260,11 @@ def main() -> None:
                     "REQUIERE_REVISION_REPOSITORIO contiene valores inválidos."
                 )
             pending = dimension[PUBLIC_REPOSITORY_REVIEW_COL].eq("Si")
-            if dimension.loc[pending, PUBLIC_REPOSITORY_CLASS_COL].notna().any():
+            if not dimension.loc[
+                pending, PUBLIC_REPOSITORY_CLASS_COL
+            ].eq("Otros").all():
                 raise AssertionError(
-                    "Los repositorios pendientes fueron forzados a una clase pública."
+                    "Los repositorios pendientes deben permanecer en Otros."
                 )
         if sheet == "DIM_INSTITUCIONES":
             required_institution_columns = {

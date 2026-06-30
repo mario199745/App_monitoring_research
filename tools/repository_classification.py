@@ -15,6 +15,7 @@ PUBLIC_REPOSITORY_CLASSES = {
     "Repositorios institucionales",
     "Repositorios universitarios",
     "Revistas",
+    "Otros",
 }
 
 REPOSITORY_CLASSES = {
@@ -318,7 +319,7 @@ def classify_public_repository(value) -> tuple[str | None, str, str]:
     }
     public_class = public_mapping.get(technical_class)
     if public_class is None:
-        return None, "REP_PUBLICA_005_PENDIENTE_REVISION", "Si"
+        return "Otros", "REP_PUBLICA_005_PENDIENTE_REVISION", "Si"
     rule_number = {
         "Buscadores académicos": "001",
         "Repositorios institucionales": "002",

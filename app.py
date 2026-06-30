@@ -42,9 +42,9 @@ except ImportError:
             "Editorial / plataforma de revistas": "Revistas",
             "Revista o portal especifico": "Revistas",
         }
-        public_class = public_mapping.get(technical_class)
+        public_class = public_mapping.get(technical_class, "Otros")
         return public_class, "COMPATIBILIDAD_DESPLIEGUE", (
-            "No" if public_class else "Si"
+            "Si" if public_class == "Otros" else "No"
         )
 
 
@@ -650,6 +650,12 @@ journal_repo_summary = repository_summary_by_class(
     "Revistas",
     include_others,
 )
+other_repo_summary = repository_summary_by_class(
+    relations.get("repositorio", pd.DataFrame()),
+    df_filtered,
+    "Otros",
+    include_others,
+)
 repo_class_summary = relation_summary(
     relations.get("repositorio_clase", pd.DataFrame()),
     df_filtered,
@@ -854,6 +860,18 @@ with tabs[0]:
                 )
         else:
             st.info("No hay revistas disponibles.")
+
+        if include_others and not other_repo_summary.empty:
+            with st.expander("Otros"):
+                st.plotly_chart(
+                    horizontal_bar(
+                        other_repo_summary,
+                        "categoria",
+                        "Otros repositorios y fuentes",
+                        max_categories_chart,
+                    ),
+                    width="stretch",
+                )
 
 with tabs[1]:
     st.subheader("Distribución territorial")

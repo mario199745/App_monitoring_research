@@ -46,6 +46,10 @@ REGION_FILTER_KEY = "relation_filter_region"
 MAP_PENDING_REGIONS_KEY = "_map_pending_regions"
 MAP_LAST_SELECTION_KEY = "_map_last_selection"
 MAP_WIDGET_VERSION_KEY = "_map_widget_version"
+PUBLICATION_CHART_LEVEL_KEY = "_publication_chart_level"
+PUBLICATION_CHART_TYPE_KEY = "_publication_chart_type"
+PUBLICATION_CHART_PENDING_KEY = "_publication_chart_pending"
+PUBLICATION_CHART_VERSION_KEY = "_publication_chart_version"
 
 SIMPLE_FILTERS = [
     (TYPE_COL, "Tipo de publicación"),
@@ -431,6 +435,24 @@ def selected_map_region_keys(event) -> tuple[str, ...]:
     return tuple(sorted(set(selected)))
 
 
+def selected_bar_labels(event) -> tuple[str, ...]:
+    """Extrae las categorías seleccionadas de una barra horizontal Plotly."""
+    if event is None:
+        return ()
+    selection = getattr(event, "selection", None)
+    if selection is None and isinstance(event, dict):
+        selection = event.get("selection")
+    points = getattr(selection, "points", None)
+    if points is None and isinstance(selection, dict):
+        points = selection.get("points", [])
+    labels = [
+        str(point.get("y")).strip()
+        for point in points or []
+        if isinstance(point, dict) and point.get("y") is not None
+    ]
+    return tuple(dict.fromkeys(label for label in labels if label))
+
+
 def map_regions_to_filter_values(
     region_keys: tuple[str, ...],
     region_relation: pd.DataFrame,
@@ -516,6 +538,7 @@ def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
         yaxis_title="",
         margin=dict(l=10, r=10, t=45, b=10),
         separators=", ",
+        clickmode="event+select",
     )
     figure.update_traces(
         texttemplate="%{text}",
@@ -592,6 +615,30 @@ if MAP_PENDING_REGIONS_KEY in st.session_state:
         MAP_PENDING_REGIONS_KEY
     )
 
+if PUBLICATION_CHART_PENDING_KEY in st.session_state:
+    pending_publication = st.session_state.pop(PUBLICATION_CHART_PENDING_KEY)
+    action = pending_publication.get("action")
+    if action == "type":
+        selected_type = pending_publication["value"]
+        st.session_state[f"filter_{TYPE_COL}"] = [selected_type]
+        st.session_state[f"filter_{SUBTYPE_COL}"] = []
+        st.session_state[PUBLICATION_CHART_TYPE_KEY] = selected_type
+        st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "subtypes"
+    elif action == "subtype":
+        st.session_state[f"filter_{SUBTYPE_COL}"] = [
+            pending_publication["value"]
+        ]
+    elif action == "clear_subtype":
+        st.session_state[f"filter_{SUBTYPE_COL}"] = []
+    elif action == "back":
+        st.session_state[f"filter_{TYPE_COL}"] = []
+        st.session_state[f"filter_{SUBTYPE_COL}"] = []
+        st.session_state.pop(PUBLICATION_CHART_TYPE_KEY, None)
+        st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "types"
+    st.session_state[PUBLICATION_CHART_VERSION_KEY] = (
+        st.session_state.get(PUBLICATION_CHART_VERSION_KEY, 0) + 1
+    )
+
 st.markdown(
     """
     <style>
@@ -623,18 +670,14 @@ with st.sidebar:
 df_filtered = apply_simple_filters(df_mode)
 df_filtered = apply_relation_filters(df_filtered, relations)
 
+chart_type = st.session_state.get(PUBLICATION_CHART_TYPE_KEY)
+sidebar_types = st.session_state.get(f"filter_{TYPE_COL}", [])
+if chart_type and sidebar_types != [chart_type]:
+    st.session_state.pop(PUBLICATION_CHART_TYPE_KEY, None)
+    st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "types"
+
 type_summary = simple_summary(df_filtered, TYPE_COL)
-publication_hierarchy = (
-    df_filtered.loc[
-        non_empty_mask(df_filtered[TYPE_COL])
-        & non_empty_mask(df_filtered[SUBTYPE_COL]),
-        [RECORD_ID_COL, TYPE_COL, SUBTYPE_COL],
-    ]
-    .groupby([TYPE_COL, SUBTYPE_COL])[RECORD_ID_COL]
-    .nunique()
-    .rename("Publicaciones")
-    .reset_index()
-)
+subtype_summary = simple_summary(df_filtered, SUBTYPE_COL)
 database_summary = relation_summary(
     relations.get("base", pd.DataFrame()),
     df_filtered,
@@ -737,16 +780,62 @@ with tabs[0]:
     st.subheader("Resumen bibliográfico")
     col_a, col_b = st.columns(2)
     with col_a:
-        if not type_summary.empty:
-            st.plotly_chart(
+        publication_level = st.session_state.get(
+            PUBLICATION_CHART_LEVEL_KEY, "types"
+        )
+        selected_publication_type = st.session_state.get(
+            PUBLICATION_CHART_TYPE_KEY
+        )
+        if publication_level == "subtypes" and selected_publication_type:
+            st.caption(f"Tipo seleccionado: {selected_publication_type}")
+            button_columns = st.columns(2)
+            if button_columns[0].button(
+                "← Volver a tipos", key="publication_chart_back"
+            ):
+                st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
+                    "action": "back"
+                }
+                st.rerun()
+            if st.session_state.get(f"filter_{SUBTYPE_COL}") and button_columns[1].button(
+                "Limpiar subcategoría", key="publication_chart_clear_subtype"
+            ):
+                st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
+                    "action": "clear_subtype"
+                }
+                st.rerun()
+            chart_data = subtype_summary
+            chart_category = SUBTYPE_COL
+            chart_title = f"Subcategorías de {selected_publication_type}"
+        else:
+            chart_data = type_summary
+            chart_category = TYPE_COL
+            chart_title = "Tipo de publicación"
+
+        if not chart_data.empty:
+            publication_event = st.plotly_chart(
                 horizontal_bar(
-                    type_summary,
-                    TYPE_COL,
-                    "Tipo de publicación",
+                    chart_data,
+                    chart_category,
+                    chart_title,
                     max_categories_chart,
                 ),
                 width="stretch",
+                key=(
+                    "publication_type_chart_"
+                    f"{st.session_state.get(PUBLICATION_CHART_VERSION_KEY, 0)}"
+                ),
+                on_select="rerun",
+                selection_mode="points",
             )
+            selected_publication_labels = selected_bar_labels(
+                publication_event
+            )
+            if selected_publication_labels:
+                st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
+                    "action": "type" if publication_level == "types" else "subtype",
+                    "value": selected_publication_labels[0],
+                }
+                st.rerun()
         else:
             st.info("No hay datos para mostrar.")
     with col_b:
@@ -762,26 +851,6 @@ with tabs[0]:
             )
         else:
             st.info("No hay clases de repositorio disponibles.")
-
-    if not publication_hierarchy.empty:
-        hierarchy_figure = px.sunburst(
-            publication_hierarchy,
-            path=[TYPE_COL, SUBTYPE_COL],
-            values="Publicaciones",
-            title="Tipo y subcategoría de publicación",
-            color=TYPE_COL,
-        )
-        hierarchy_figure.update_traces(
-            textinfo="label+value+percent parent",
-            hovertemplate=(
-                "<b>%{label}</b><br>Publicaciones: %{value}<br>"
-                "Proporción: %{percentParent:.1%}<extra></extra>"
-            ),
-        )
-        hierarchy_figure.update_layout(
-            margin=dict(t=60, l=10, r=10, b=10),
-        )
-        st.plotly_chart(hierarchy_figure, width="stretch")
 
     if not database_summary.empty:
         st.plotly_chart(

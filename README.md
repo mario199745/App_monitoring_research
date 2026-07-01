@@ -52,6 +52,11 @@ eventos científicos se integran en `Artículo` y se identifican mediante el
 subtipo `Publicación de evento científico`. El filtro `Subtipo de publicación`
 muestra la clasificación documental específica.
 
+El gráfico `Tipo de publicación` funciona como navegador y filtro jerárquico:
+al seleccionar `Artículo` o `Tesis` muestra sus subcategorías; al seleccionar
+una subcategoría actualiza los indicadores, gráficos, datos y descargas. El
+botón `Volver a tipos` restablece el primer nivel.
+
 Los códigos `ID_PUBLICACION_PROPUESTA` son persistentes. El registro maestro
 ubicado en `../NOTEBOOK/registro_maestro_publicaciones.csv` permite conservar
 los identificadores existentes y asignar códigos nuevos de forma incremental.

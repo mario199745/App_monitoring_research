@@ -803,9 +803,14 @@ with tabs[0]:
                     "action": "clear_subtype"
                 }
                 st.rerun()
-            chart_data = subtype_summary
-            chart_category = SUBTYPE_COL
-            chart_title = f"Subcategorías de {selected_publication_type}"
+            chart_data = subtype_summary.copy()
+            chart_category = "Jerarquía de publicación"
+            chart_data[chart_category] = (
+                selected_publication_type
+                + " › "
+                + chart_data[SUBTYPE_COL].astype(str)
+            )
+            chart_title = f"{selected_publication_type} — subcategorías"
         else:
             chart_data = type_summary
             chart_category = TYPE_COL
@@ -831,9 +836,12 @@ with tabs[0]:
                 publication_event
             )
             if selected_publication_labels:
+                selected_label = selected_publication_labels[0]
+                if publication_level == "subtypes" and " › " in selected_label:
+                    selected_label = selected_label.split(" › ", 1)[1]
                 st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
                     "action": "type" if publication_level == "types" else "subtype",
-                    "value": selected_publication_labels[0],
+                    "value": selected_label,
                 }
                 st.rerun()
         else:

@@ -50,6 +50,10 @@ PUBLICATION_CHART_LEVEL_KEY = "_publication_chart_level"
 PUBLICATION_CHART_TYPE_KEY = "_publication_chart_type"
 PUBLICATION_CHART_PENDING_KEY = "_publication_chart_pending"
 PUBLICATION_CHART_VERSION_KEY = "_publication_chart_version"
+REPOSITORY_CHART_LEVEL_KEY = "_repository_chart_level"
+REPOSITORY_CHART_CLASS_KEY = "_repository_chart_class"
+REPOSITORY_CHART_PENDING_KEY = "_repository_chart_pending"
+REPOSITORY_CHART_VERSION_KEY = "_repository_chart_version"
 
 SIMPLE_FILTERS = [
     (TYPE_COL, "Tipo de publicación"),
@@ -639,6 +643,32 @@ if PUBLICATION_CHART_PENDING_KEY in st.session_state:
         st.session_state.get(PUBLICATION_CHART_VERSION_KEY, 0) + 1
     )
 
+if REPOSITORY_CHART_PENDING_KEY in st.session_state:
+    pending_repository = st.session_state.pop(REPOSITORY_CHART_PENDING_KEY)
+    action = pending_repository.get("action")
+    if action == "class":
+        selected_class = pending_repository["value"]
+        st.session_state["relation_filter_repositorio_clase"] = [
+            selected_class
+        ]
+        st.session_state["relation_filter_repositorio"] = []
+        st.session_state[REPOSITORY_CHART_CLASS_KEY] = selected_class
+        st.session_state[REPOSITORY_CHART_LEVEL_KEY] = "repositories"
+    elif action == "repository":
+        st.session_state["relation_filter_repositorio"] = [
+            pending_repository["value"]
+        ]
+    elif action == "clear_repository":
+        st.session_state["relation_filter_repositorio"] = []
+    elif action == "back":
+        st.session_state["relation_filter_repositorio_clase"] = []
+        st.session_state["relation_filter_repositorio"] = []
+        st.session_state.pop(REPOSITORY_CHART_CLASS_KEY, None)
+        st.session_state[REPOSITORY_CHART_LEVEL_KEY] = "classes"
+    st.session_state[REPOSITORY_CHART_VERSION_KEY] = (
+        st.session_state.get(REPOSITORY_CHART_VERSION_KEY, 0) + 1
+    )
+
 st.markdown(
     """
     <style>
@@ -676,6 +706,17 @@ if chart_type and sidebar_types != [chart_type]:
     st.session_state.pop(PUBLICATION_CHART_TYPE_KEY, None)
     st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "types"
 
+chart_repository_class = st.session_state.get(REPOSITORY_CHART_CLASS_KEY)
+sidebar_repository_classes = st.session_state.get(
+    "relation_filter_repositorio_clase", []
+)
+if (
+    chart_repository_class
+    and sidebar_repository_classes != [chart_repository_class]
+):
+    st.session_state.pop(REPOSITORY_CHART_CLASS_KEY, None)
+    st.session_state[REPOSITORY_CHART_LEVEL_KEY] = "classes"
+
 type_summary = simple_summary(df_filtered, TYPE_COL)
 subtype_summary = simple_summary(df_filtered, SUBTYPE_COL)
 database_summary = relation_summary(
@@ -689,6 +730,17 @@ repo_class_summary = relation_summary(
     relations.get("repositorio_clase", pd.DataFrame()),
     df_filtered,
     include_others,
+)
+selected_repository_class = st.session_state.get(REPOSITORY_CHART_CLASS_KEY)
+repository_drilldown_summary = (
+    repository_summary_by_class(
+        relations.get("repositorio", pd.DataFrame()),
+        df_filtered,
+        selected_repository_class,
+        include_others,
+    )
+    if selected_repository_class
+    else pd.DataFrame(columns=["categoria", "Publicaciones"])
 )
 institution_class_summary = relation_summary(
     relations.get("institucion_clase", pd.DataFrame()),
@@ -847,16 +899,82 @@ with tabs[0]:
         else:
             st.info("No hay datos para mostrar.")
     with col_b:
-        if not repo_class_summary.empty:
-            st.plotly_chart(
+        repository_level = st.session_state.get(
+            REPOSITORY_CHART_LEVEL_KEY, "classes"
+        )
+        selected_repository_class = st.session_state.get(
+            REPOSITORY_CHART_CLASS_KEY
+        )
+        if repository_level == "repositories" and selected_repository_class:
+            st.caption(f"Clase seleccionada: {selected_repository_class}")
+            repository_buttons = st.columns(2)
+            if repository_buttons[0].button(
+                "← Volver a clases", key="repository_chart_back"
+            ):
+                st.session_state[REPOSITORY_CHART_PENDING_KEY] = {
+                    "action": "back"
+                }
+                st.rerun()
+            if (
+                st.session_state.get("relation_filter_repositorio")
+                and repository_buttons[1].button(
+                    "Limpiar repositorio", key="repository_chart_clear"
+                )
+            ):
+                st.session_state[REPOSITORY_CHART_PENDING_KEY] = {
+                    "action": "clear_repository"
+                }
+                st.rerun()
+            repository_chart_data = repository_drilldown_summary.copy()
+            repository_category = "Jerarquía de repositorio"
+            repository_chart_data[repository_category] = (
+                selected_repository_class
+                + " › "
+                + repository_chart_data["categoria"].astype(str)
+            )
+            repository_title = f"{selected_repository_class} — repositorios"
+        else:
+            repository_chart_data = repo_class_summary
+            repository_category = "categoria"
+            repository_title = "Publicaciones por clase de repositorio"
+
+        if not repository_chart_data.empty:
+            repository_event = st.plotly_chart(
                 horizontal_bar(
-                    repo_class_summary,
-                    "categoria",
-                    "Publicaciones por clase de repositorio",
+                    repository_chart_data,
+                    repository_category,
+                    repository_title,
                     max_categories_chart,
                 ),
                 width="stretch",
+                key=(
+                    "repository_class_chart_"
+                    f"{st.session_state.get(REPOSITORY_CHART_VERSION_KEY, 0)}"
+                ),
+                on_select="rerun",
+                selection_mode="points",
             )
+            selected_repository_labels = selected_bar_labels(
+                repository_event
+            )
+            if selected_repository_labels:
+                selected_repository_label = selected_repository_labels[0]
+                if (
+                    repository_level == "repositories"
+                    and " › " in selected_repository_label
+                ):
+                    selected_repository_label = selected_repository_label.split(
+                        " › ", 1
+                    )[1]
+                st.session_state[REPOSITORY_CHART_PENDING_KEY] = {
+                    "action": (
+                        "class"
+                        if repository_level == "classes"
+                        else "repository"
+                    ),
+                    "value": selected_repository_label,
+                }
+                st.rerun()
         else:
             st.info("No hay clases de repositorio disponibles.")
 
@@ -1006,17 +1124,18 @@ with tabs[3]:
     else:
         st.info("No hay áreas temáticas para mostrar.")
 
-    with st.expander("Ejes temáticos"):
-        if not eje_summary.empty:
-            st.plotly_chart(
-                horizontal_bar(
-                    eje_summary,
-                    "categoria",
-                    "Publicaciones vinculadas por eje temático",
-                    max_categories_chart,
-                ),
-                width="stretch",
-            )
+    if not eje_summary.empty:
+        st.plotly_chart(
+            horizontal_bar(
+                eje_summary,
+                "categoria",
+                "Publicaciones vinculadas por eje temático",
+                max_categories_chart,
+            ),
+            width="stretch",
+        )
+    else:
+        st.info("No hay ejes temáticos para mostrar.")
 
 with tabs[4]:
     st.subheader("Instituciones y universidades")

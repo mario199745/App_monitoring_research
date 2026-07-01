@@ -57,6 +57,11 @@ al seleccionar `Artículo` o `Tesis` muestra sus subcategorías; al seleccionar
 una subcategoría actualiza los indicadores, gráficos, datos y descargas. El
 botón `Volver a tipos` restablece el primer nivel.
 
+El gráfico `Publicaciones por clase de repositorio` utiliza el mismo patrón en
+dos niveles visibles: clase pública y repositorio específico. La clase técnica
+se conserva para auditoría, pero se omite en la navegación. Las selecciones del
+gráfico se sincronizan con los filtros de clase y repositorio.
+
 Los códigos `ID_PUBLICACION_PROPUESTA` son persistentes. El registro maestro
 ubicado en `../NOTEBOOK/registro_maestro_publicaciones.csv` permite conservar
 los identificadores existentes y asignar códigos nuevos de forma incremental.

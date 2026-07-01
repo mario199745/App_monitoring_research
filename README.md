@@ -47,9 +47,9 @@ Al seleccionar `Tesis`, se habilitan filtros públicos separados para
 `Grado académico` y `Nivel académico`. La categoría técnica `No aplica` no se
 muestra en estos filtros.
 
-El tipo público se organiza en `Artículo` y `Tesis`. Al seleccionar
-`Artículo`, se habilita el subtipo `Artículo científico` o
-`Artículo de conferencia`.
+El tipo público se organiza en `Artículo`, `Tesis` y `Publicación de evento
+científico`. El filtro `Subtipo de publicación` muestra la clasificación
+documental específica para las tres categorías.
 
 Los códigos `ID_PUBLICACION_PROPUESTA` son persistentes. El registro maestro
 ubicado en `../NOTEBOOK/registro_maestro_publicaciones.csv` permite conservar

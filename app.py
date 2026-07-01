@@ -347,14 +347,14 @@ def apply_simple_filters(df_scope: pd.DataFrame) -> pd.DataFrame:
                     .str.strip()
                     .isin(selected)
                 ]
-    if "Artículo" in selected_types:
+    if selected_types:
         values = (
             filtered.loc[non_empty_mask(filtered[SUBTYPE_COL]), SUBTYPE_COL]
             .astype(str)
             .str.strip()
         )
         selected = st.sidebar.multiselect(
-            "Subtipo de artículo",
+            "Subtipo de publicación",
             sorted(values.unique().tolist()),
             key=f"filter_{SUBTYPE_COL}",
         )
@@ -735,6 +735,13 @@ with tabs[0]:
                     max_categories_chart,
                 ),
                 width="stretch",
+            )
+            st.caption(
+                "Subcategorías: Artículo — científico, revisión y nota "
+                "científica; Tesis — pregrado, maestría, doctorado, "
+                "suficiencia profesional y niveles no especificados; "
+                "Publicación de evento científico — artículo de conferencia "
+                "y ponencia o memoria de evento."
             )
         else:
             st.info("No hay datos para mostrar.")

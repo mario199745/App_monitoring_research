@@ -34,6 +34,7 @@ ACADEMIC_GRADE = "GRADO_ACADEMICO_PUBLICO"
 ACADEMIC_LEVEL = "NIVEL_ACADEMICO_PUBLICO"
 PUBLIC_TYPE = "TIPO_PUBLICACION_PUBLICO"
 PUBLIC_SUBTYPE = "SUBTIPO_PUBLICACION_PUBLICO"
+AUDITED_TYPE_FILE = "clasificacion_tipos_publicacion_auditada.csv"
 INSTITUTION_SOURCE = "General_ Institución/Universidad"
 JOURNAL_SOURCE = "General_ Nombre de revista"
 
@@ -185,7 +186,7 @@ def build_publications(
     ).merge(databases, on=PUBLICATION_ID, how="left", validate="one_to_one")
     publications["USAR_PARA_CONTEO_UNICO"] = "SI"
     publications[PUBLIC_TYPE] = publications["TIPO_PUBLICACION_NORM"].replace(
-        {"Artículo de conferencia": "Artículo"}
+        {"Artículo de conferencia": "Publicación de evento científico"}
     )
     publications[PUBLIC_SUBTYPE] = publications["TIPO_PUBLICACION_NORM"].map(
         {
@@ -205,6 +206,33 @@ def build_publications(
     return publications[front + remaining].sort_values(
         PUBLICATION_ID
     ).reset_index(drop=True)
+
+
+def apply_audited_publication_types(
+    publications: pd.DataFrame,
+    audit_file: Path,
+) -> pd.DataFrame:
+    """Aplica decisiones auditadas por ID sin alterar los campos de origen."""
+    if not audit_file.exists():
+        return publications
+    decisions = pd.read_csv(audit_file, dtype="string")
+    required = [PUBLICATION_ID, "TIPO_PROPUESTO", "SUBTIPO_PROPUESTO"]
+    missing = set(required) - set(decisions.columns)
+    if missing:
+        raise ValueError(
+            "La clasificación documental auditada no contiene: "
+            + ", ".join(sorted(missing))
+        )
+    decisions = decisions[required].copy()
+    if decisions[PUBLICATION_ID].duplicated().any():
+        raise ValueError("La clasificación documental auditada contiene IDs duplicados.")
+    result = publications.merge(
+        decisions, on=PUBLICATION_ID, how="left", validate="one_to_one"
+    )
+    has_decision = result["TIPO_PROPUESTO"].notna()
+    result.loc[has_decision, PUBLIC_TYPE] = result.loc[has_decision, "TIPO_PROPUESTO"]
+    result.loc[has_decision, PUBLIC_SUBTYPE] = result.loc[has_decision, "SUBTIPO_PROPUESTO"]
+    return result.drop(columns=["TIPO_PROPUESTO", "SUBTIPO_PROPUESTO"])
 
 
 def derive_academic_fields(
@@ -735,6 +763,10 @@ def main() -> None:
         on=PUBLICATION_ID,
         how="left",
         validate="one_to_one",
+    )
+    publications = apply_audited_publication_types(
+        publications,
+        data_dir / "_fuentes_tecnicas" / AUDITED_TYPE_FILE,
     )
     territorial_sheets = consolidate_territorial(territorial_source, mapping)
 

@@ -123,24 +123,43 @@ def main() -> None:
         or not df["HUELLA_PUBLICACION_PERSISTENTE"].is_unique
     ):
         raise AssertionError("Las huellas persistentes no son completas y únicas.")
-    if set(df["TIPO_PUBLICACION_PUBLICO"].dropna()) != {"Artículo", "Tesis"}:
+    allowed_types = {"Artículo", "Tesis", "Publicación de evento científico"}
+    if set(df["TIPO_PUBLICACION_PUBLICO"].dropna()) != allowed_types:
         raise AssertionError("TIPO_PUBLICACION_PUBLICO no cumple la jerarquía.")
-    allowed_subtypes = {"Artículo científico", "Artículo de conferencia"}
-    article_rows = df["TIPO_PUBLICACION_PUBLICO"].eq("Artículo")
+    allowed_subtypes = {
+        "Artículo científico",
+        "Artículo de revisión",
+        "Nota científica",
+        "Tesis de pregrado",
+        "Tesis de maestría",
+        "Tesis doctoral",
+        "Tesis de posgrado no especificada",
+        "Tesis de nivel no especificado",
+        "Trabajo de suficiencia profesional",
+        "Artículo de conferencia",
+        "Ponencia o memoria de evento",
+    }
     if not set(
-        df.loc[article_rows, "SUBTIPO_PUBLICACION_PUBLICO"].dropna()
+        df["SUBTIPO_PUBLICACION_PUBLICO"].dropna()
     ).issubset(allowed_subtypes):
         raise AssertionError("SUBTIPO_PUBLICACION_PUBLICO contiene valores inválidos.")
-    if df.loc[
-        ~article_rows, "SUBTIPO_PUBLICACION_PUBLICO"
-    ].notna().any():
-        raise AssertionError("Las tesis contienen subtipo de artículo.")
+    if df["SUBTIPO_PUBLICACION_PUBLICO"].isna().any():
+        raise AssertionError("Existen publicaciones sin subtipo documental.")
     conference_count = int(
         df["SUBTIPO_PUBLICACION_PUBLICO"].eq("Artículo de conferencia").sum()
     )
     if conference_count != 5:
         raise AssertionError(
             f"Se esperaban 5 artículos de conferencia y se obtuvieron {conference_count}."
+        )
+    event_count = int(
+        df["TIPO_PUBLICACION_PUBLICO"]
+        .eq("Publicación de evento científico")
+        .sum()
+    )
+    if event_count != 6:
+        raise AssertionError(
+            f"Se esperaban 6 publicaciones de evento y se obtuvieron {event_count}."
         )
     non_thesis = df["TIPO_PUBLICACION_NORM"].ne("Tesis")
     if df.loc[

@@ -57,6 +57,10 @@ al seleccionar `Artículo` o `Tesis` muestra sus subcategorías; al seleccionar
 una subcategoría actualiza los indicadores, gráficos, datos y descargas. El
 botón `Volver a tipos` restablece el primer nivel.
 
+`Tesis de posgrado` incorpora un tercer nivel: `Tesis de maestría`, `Tesis
+doctoral` y `No identificados`. Este nivel también funciona como filtro global
+y conserva visible la ruta jerárquica completa.
+
 El gráfico `Publicaciones por clase de repositorio` utiliza el mismo patrón en
 dos niveles visibles: clase pública y repositorio específico. La clase técnica
 se conserva para auditoría, pero se omite en la navegación. Las selecciones del

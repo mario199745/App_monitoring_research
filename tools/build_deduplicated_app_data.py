@@ -34,6 +34,7 @@ ACADEMIC_GRADE = "GRADO_ACADEMICO_PUBLICO"
 ACADEMIC_LEVEL = "NIVEL_ACADEMICO_PUBLICO"
 PUBLIC_TYPE = "TIPO_PUBLICACION_PUBLICO"
 PUBLIC_SUBTYPE = "SUBTIPO_PUBLICACION_PUBLICO"
+POSTGRAD_DETAIL = "DETALLE_TESIS_POSGRADO_PUBLICO"
 AUDITED_TYPE_FILE = "clasificacion_tipos_publicacion_auditada.csv"
 INSTITUTION_SOURCE = "General_ Institución/Universidad"
 JOURNAL_SOURCE = "General_ Nombre de revista"
@@ -223,7 +224,10 @@ def apply_audited_publication_types(
             "La clasificación documental auditada no contiene: "
             + ", ".join(sorted(missing))
         )
-    decisions = decisions[required].copy()
+    decision_columns = required + (
+        [POSTGRAD_DETAIL] if POSTGRAD_DETAIL in decisions.columns else []
+    )
+    decisions = decisions[decision_columns].copy()
     if decisions[PUBLICATION_ID].duplicated().any():
         raise ValueError("La clasificación documental auditada contiene IDs duplicados.")
     result = publications.merge(
@@ -232,6 +236,8 @@ def apply_audited_publication_types(
     has_decision = result["TIPO_PROPUESTO"].notna()
     result.loc[has_decision, PUBLIC_TYPE] = result.loc[has_decision, "TIPO_PROPUESTO"]
     result.loc[has_decision, PUBLIC_SUBTYPE] = result.loc[has_decision, "SUBTIPO_PROPUESTO"]
+    if POSTGRAD_DETAIL in result.columns:
+        result[POSTGRAD_DETAIL] = result[POSTGRAD_DETAIL].astype("string")
     return result.drop(columns=["TIPO_PROPUESTO", "SUBTIPO_PROPUESTO"])
 
 

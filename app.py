@@ -35,6 +35,7 @@ TERRITORIAL_EXPANDED_SHEET = "REGIONES_EXPANDIDAS"
 SOURCE_TYPE_COL = "TIPO_PUBLICACION_NORM"
 TYPE_COL = "TIPO_PUBLICACION_PUBLICO"
 SUBTYPE_COL = "SUBTIPO_PUBLICACION_PUBLICO"
+POSTGRAD_DETAIL_COL = "DETALLE_TESIS_POSGRADO_PUBLICO"
 YEAR_COL = "General_ Año"
 REGION_COL = "REGION_NORM_SUGERIDA"
 ACADEMIC_GRADE_COL = "GRADO_ACADEMICO_PUBLICO"
@@ -48,6 +49,8 @@ MAP_LAST_SELECTION_KEY = "_map_last_selection"
 MAP_WIDGET_VERSION_KEY = "_map_widget_version"
 PUBLICATION_CHART_LEVEL_KEY = "_publication_chart_level"
 PUBLICATION_CHART_TYPE_KEY = "_publication_chart_type"
+PUBLICATION_CHART_SUBTYPE_KEY = "_publication_chart_subtype"
+PUBLICATION_DETAIL_FILTER_KEY = "_publication_detail_filter"
 PUBLICATION_CHART_PENDING_KEY = "_publication_chart_pending"
 PUBLICATION_CHART_VERSION_KEY = "_publication_chart_version"
 REPOSITORY_CHART_LEVEL_KEY = "_repository_chart_level"
@@ -155,6 +158,57 @@ def load_geojson(path: str) -> dict:
 
 def non_empty_mask(series: pd.Series) -> pd.Series:
     return series.notna() & series.astype(str).str.strip().ne("")
+
+
+def normalize_publication_hierarchy(data: pd.DataFrame) -> pd.DataFrame:
+    """Garantiza que los eventos sean subcategorías de Artículo al cargar."""
+    result = data.copy()
+    if TYPE_COL not in result.columns or SUBTYPE_COL not in result.columns:
+        return result
+    event_subtypes = {
+        "Artículo de conferencia",
+        "Ponencia o memoria de evento",
+        "Publicación de evento científico",
+    }
+    event_mask = (
+        result[TYPE_COL]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .eq("Publicación de evento científico")
+        | result[SUBTYPE_COL]
+        .fillna("")
+        .astype(str)
+        .str.strip()
+        .isin(event_subtypes)
+    )
+    result.loc[event_mask, TYPE_COL] = "Artículo"
+    result.loc[event_mask, SUBTYPE_COL] = "Publicación de evento científico"
+    if POSTGRAD_DETAIL_COL not in result.columns:
+        result[POSTGRAD_DETAIL_COL] = pd.NA
+    master_mask = result[SUBTYPE_COL].eq("Tesis de maestría")
+    doctoral_mask = result[SUBTYPE_COL].eq("Tesis doctoral")
+    result.loc[master_mask, POSTGRAD_DETAIL_COL] = "Tesis de maestría"
+    result.loc[doctoral_mask, POSTGRAD_DETAIL_COL] = "Tesis doctoral"
+    result.loc[master_mask | doctoral_mask, SUBTYPE_COL] = "Tesis de posgrado"
+    postgraduate_mask = result[SUBTYPE_COL].isin(
+        ["Tesis de posgrado", "Tesis de posgrado no especificada"]
+    )
+    result.loc[postgraduate_mask, SUBTYPE_COL] = "Tesis de posgrado"
+    missing_detail = postgraduate_mask & result[POSTGRAD_DETAIL_COL].isna()
+    result.loc[
+        missing_detail & result[ACADEMIC_LEVEL_COL].eq("Maestría"),
+        POSTGRAD_DETAIL_COL,
+    ] = "Tesis de maestría"
+    result.loc[
+        missing_detail & result[ACADEMIC_LEVEL_COL].eq("Doctorado"),
+        POSTGRAD_DETAIL_COL,
+    ] = "Tesis doctoral"
+    result.loc[
+        postgraduate_mask & result[POSTGRAD_DETAIL_COL].isna(),
+        POSTGRAD_DETAIL_COL,
+    ] = "No identificados"
+    return result
 
 
 def human_int(value) -> str:
@@ -602,6 +656,7 @@ except Exception as exc:
     st.stop()
 
 df.columns = [str(column).strip() for column in df.columns]
+df = normalize_publication_hierarchy(df)
 missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
 if missing:
     st.error("La base final no contiene columnas requeridas: " + ", ".join(missing))
@@ -632,12 +687,31 @@ if PUBLICATION_CHART_PENDING_KEY in st.session_state:
         st.session_state[f"filter_{SUBTYPE_COL}"] = [
             pending_publication["value"]
         ]
+        if pending_publication["value"] == "Tesis de posgrado":
+            st.session_state[PUBLICATION_CHART_SUBTYPE_KEY] = (
+                "Tesis de posgrado"
+            )
+            st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "postgraduate"
+            st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = None
+    elif action == "detail":
+        st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = pending_publication[
+            "value"
+        ]
     elif action == "clear_subtype":
         st.session_state[f"filter_{SUBTYPE_COL}"] = []
+    elif action == "clear_detail":
+        st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = None
+    elif action == "back_to_subtypes":
+        st.session_state[f"filter_{SUBTYPE_COL}"] = []
+        st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = None
+        st.session_state.pop(PUBLICATION_CHART_SUBTYPE_KEY, None)
+        st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "subtypes"
     elif action == "back":
         st.session_state[f"filter_{TYPE_COL}"] = []
         st.session_state[f"filter_{SUBTYPE_COL}"] = []
         st.session_state.pop(PUBLICATION_CHART_TYPE_KEY, None)
+        st.session_state.pop(PUBLICATION_CHART_SUBTYPE_KEY, None)
+        st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = None
         st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "types"
     st.session_state[PUBLICATION_CHART_VERSION_KEY] = (
         st.session_state.get(PUBLICATION_CHART_VERSION_KEY, 0) + 1
@@ -698,6 +772,13 @@ with st.sidebar:
     st.caption(f"Base: {app_file.name}")
 
 df_filtered = apply_simple_filters(df_mode)
+selected_postgraduate_detail = st.session_state.get(
+    PUBLICATION_DETAIL_FILTER_KEY
+)
+if selected_postgraduate_detail:
+    df_filtered = df_filtered[
+        df_filtered[POSTGRAD_DETAIL_COL].eq(selected_postgraduate_detail)
+    ]
 df_filtered = apply_relation_filters(df_filtered, relations)
 
 chart_type = st.session_state.get(PUBLICATION_CHART_TYPE_KEY)
@@ -705,6 +786,15 @@ sidebar_types = st.session_state.get(f"filter_{TYPE_COL}", [])
 if chart_type and sidebar_types != [chart_type]:
     st.session_state.pop(PUBLICATION_CHART_TYPE_KEY, None)
     st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "types"
+    st.session_state.pop(PUBLICATION_CHART_SUBTYPE_KEY, None)
+    st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = None
+
+chart_subtype = st.session_state.get(PUBLICATION_CHART_SUBTYPE_KEY)
+sidebar_subtypes = st.session_state.get(f"filter_{SUBTYPE_COL}", [])
+if chart_subtype and sidebar_subtypes != [chart_subtype]:
+    st.session_state.pop(PUBLICATION_CHART_SUBTYPE_KEY, None)
+    st.session_state[PUBLICATION_DETAIL_FILTER_KEY] = None
+    st.session_state[PUBLICATION_CHART_LEVEL_KEY] = "subtypes"
 
 chart_repository_class = st.session_state.get(REPOSITORY_CHART_CLASS_KEY)
 sidebar_repository_classes = st.session_state.get(
@@ -719,6 +809,9 @@ if (
 
 type_summary = simple_summary(df_filtered, TYPE_COL)
 subtype_summary = simple_summary(df_filtered, SUBTYPE_COL)
+postgraduate_detail_summary = simple_summary(
+    df_filtered, POSTGRAD_DETAIL_COL
+)
 database_summary = relation_summary(
     relations.get("base", pd.DataFrame()),
     df_filtered,
@@ -838,7 +931,35 @@ with tabs[0]:
         selected_publication_type = st.session_state.get(
             PUBLICATION_CHART_TYPE_KEY
         )
-        if publication_level == "subtypes" and selected_publication_type:
+        if publication_level == "postgraduate" and selected_publication_type:
+            st.caption("Jerarquía seleccionada: Tesis › Tesis de posgrado")
+            button_columns = st.columns(2)
+            if button_columns[0].button(
+                "← Volver a subcategorías",
+                key="publication_chart_back_to_subtypes",
+            ):
+                st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
+                    "action": "back_to_subtypes"
+                }
+                st.rerun()
+            if (
+                st.session_state.get(PUBLICATION_DETAIL_FILTER_KEY)
+                and button_columns[1].button(
+                    "Limpiar detalle", key="publication_chart_clear_detail"
+                )
+            ):
+                st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
+                    "action": "clear_detail"
+                }
+                st.rerun()
+            chart_data = postgraduate_detail_summary.copy()
+            chart_category = "Jerarquía de publicación"
+            chart_data[chart_category] = (
+                "Tesis › Tesis de posgrado › "
+                + chart_data[POSTGRAD_DETAIL_COL].astype(str)
+            )
+            chart_title = "Tesis de posgrado — detalle"
+        elif publication_level == "subtypes" and selected_publication_type:
             st.caption(f"Tipo seleccionado: {selected_publication_type}")
             button_columns = st.columns(2)
             if button_columns[0].button(
@@ -889,10 +1010,16 @@ with tabs[0]:
             )
             if selected_publication_labels:
                 selected_label = selected_publication_labels[0]
-                if publication_level == "subtypes" and " › " in selected_label:
-                    selected_label = selected_label.split(" › ", 1)[1]
+                if publication_level in {"subtypes", "postgraduate"} and " › " in selected_label:
+                    selected_label = selected_label.rsplit(" › ", 1)[1]
                 st.session_state[PUBLICATION_CHART_PENDING_KEY] = {
-                    "action": "type" if publication_level == "types" else "subtype",
+                    "action": (
+                        "type"
+                        if publication_level == "types"
+                        else "detail"
+                        if publication_level == "postgraduate"
+                        else "subtype"
+                    ),
                     "value": selected_label,
                 }
                 st.rerun()

@@ -51,6 +51,9 @@ def main() -> None:
         decisions.loc[event_mask, "SUBTIPO_PROPUESTO"] = (
             "Publicación de evento científico"
         )
+    decisions["SUBTIPO_PROPUESTO"] = decisions[
+        "SUBTIPO_PROPUESTO"
+    ].replace({"Tesis de posgrado no especificada": "Tesis de posgrado"})
     if decisions[ID].isna().any() or decisions[ID].duplicated().any():
         raise ValueError("Los IDs de la auditoría no son completos y únicos.")
     if decisions[["TIPO_PROPUESTO", "SUBTIPO_PROPUESTO"]].isna().any().any():

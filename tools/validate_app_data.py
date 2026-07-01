@@ -29,6 +29,7 @@ REQUIRED_MAIN_COLUMNS = [
     "TIPO_PUBLICACION_NORM",
     "TIPO_PUBLICACION_PUBLICO",
     "SUBTIPO_PUBLICACION_PUBLICO",
+    "DETALLE_TESIS_POSGRADO_PUBLICO",
     "General_ Año",
     "USAR_PARA_CONTEO_UNICO",
     "GRADO_ACADEMICO_PUBLICO",
@@ -131,9 +132,7 @@ def main() -> None:
         "Artículo de revisión",
         "Nota científica",
         "Tesis de pregrado",
-        "Tesis de maestría",
-        "Tesis doctoral",
-        "Tesis de posgrado no especificada",
+        "Tesis de posgrado",
         "Tesis de nivel no especificado",
         "Trabajo de suficiencia profesional",
         "Publicación de evento científico",
@@ -144,6 +143,32 @@ def main() -> None:
         raise AssertionError("SUBTIPO_PUBLICACION_PUBLICO contiene valores inválidos.")
     if df["SUBTIPO_PUBLICACION_PUBLICO"].isna().any():
         raise AssertionError("Existen publicaciones sin subtipo documental.")
+    postgraduate = df["SUBTIPO_PUBLICACION_PUBLICO"].eq("Tesis de posgrado")
+    allowed_postgraduate_details = {
+        "Tesis de maestría",
+        "Tesis doctoral",
+        "No identificados",
+    }
+    if set(
+        df.loc[postgraduate, "DETALLE_TESIS_POSGRADO_PUBLICO"].dropna()
+    ) != allowed_postgraduate_details:
+        raise AssertionError("El detalle de tesis de posgrado es incompleto.")
+    if df.loc[~postgraduate, "DETALLE_TESIS_POSGRADO_PUBLICO"].notna().any():
+        raise AssertionError("Existen detalles de posgrado fuera de Tesis de posgrado.")
+    expected_postgraduate = {
+        "Tesis de maestría": 54,
+        "Tesis doctoral": 24,
+        "No identificados": 389,
+    }
+    actual_postgraduate = (
+        df.loc[postgraduate, "DETALLE_TESIS_POSGRADO_PUBLICO"]
+        .value_counts()
+        .to_dict()
+    )
+    if actual_postgraduate != expected_postgraduate:
+        raise AssertionError(
+            f"Distribución de posgrado inesperada: {actual_postgraduate}."
+        )
     event_count = int(
         df["SUBTIPO_PUBLICACION_PUBLICO"]
         .eq("Publicación de evento científico")
@@ -165,6 +190,7 @@ def main() -> None:
         "Maestría",
         "Doctorado",
         "Suficiencia profesional",
+        "No identificado",
         "Otros",
     }
     thesis = df[df["TIPO_PUBLICACION_NORM"].eq("Tesis")]

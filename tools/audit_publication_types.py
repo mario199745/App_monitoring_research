@@ -118,7 +118,7 @@ def classify(row: pd.Series) -> dict[str, object]:
             "maestria": "Tesis de maestría",
             "pregrado": "Tesis de pregrado",
             "suficiencia profesional": "Trabajo de suficiencia profesional",
-            "posgrado no especificado": "Tesis de posgrado no especificada",
+            "posgrado no especificado": "Tesis de posgrado",
             "nivel no especificado": "Tesis de nivel no especificado",
             "otros": "Tesis de nivel no especificado",
         }

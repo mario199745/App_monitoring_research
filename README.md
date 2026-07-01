@@ -66,6 +66,10 @@ dos niveles visibles: clase pública y repositorio específico. La clase técnic
 se conserva para auditoría, pero se omite en la navegación. Las selecciones del
 gráfico se sincronizan con los filtros de clase y repositorio.
 
+El gráfico `Publicaciones por base documental` también funciona como filtro
+global. La selección se sincroniza con el filtro lateral `Base documental` y
+puede retirarse mediante `Limpiar base`.
+
 Los códigos `ID_PUBLICACION_PROPUESTA` son persistentes. El registro maestro
 ubicado en `../NOTEBOOK/registro_maestro_publicaciones.csv` permite conservar
 los identificadores existentes y asignar códigos nuevos de forma incremental.

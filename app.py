@@ -57,6 +57,9 @@ REPOSITORY_CHART_LEVEL_KEY = "_repository_chart_level"
 REPOSITORY_CHART_CLASS_KEY = "_repository_chart_class"
 REPOSITORY_CHART_PENDING_KEY = "_repository_chart_pending"
 REPOSITORY_CHART_VERSION_KEY = "_repository_chart_version"
+DATABASE_CHART_PENDING_KEY = "_database_chart_pending"
+DATABASE_CHART_VERSION_KEY = "_database_chart_version"
+DATABASE_CHART_LAST_SELECTION_KEY = "_database_chart_last_selection"
 
 SIMPLE_FILTERS = [
     (TYPE_COL, "Tipo de publicación"),
@@ -743,6 +746,20 @@ if REPOSITORY_CHART_PENDING_KEY in st.session_state:
         st.session_state.get(REPOSITORY_CHART_VERSION_KEY, 0) + 1
     )
 
+if DATABASE_CHART_PENDING_KEY in st.session_state:
+    pending_database = st.session_state.pop(DATABASE_CHART_PENDING_KEY)
+    action = pending_database.get("action")
+    if action == "select":
+        selected_database = pending_database["value"]
+        st.session_state["relation_filter_base"] = [selected_database]
+        st.session_state[DATABASE_CHART_LAST_SELECTION_KEY] = selected_database
+    elif action == "clear":
+        st.session_state["relation_filter_base"] = []
+        st.session_state.pop(DATABASE_CHART_LAST_SELECTION_KEY, None)
+    st.session_state[DATABASE_CHART_VERSION_KEY] = (
+        st.session_state.get(DATABASE_CHART_VERSION_KEY, 0) + 1
+    )
+
 st.markdown(
     """
     <style>
@@ -806,6 +823,17 @@ if (
 ):
     st.session_state.pop(REPOSITORY_CHART_CLASS_KEY, None)
     st.session_state[REPOSITORY_CHART_LEVEL_KEY] = "classes"
+
+sidebar_databases = st.session_state.get("relation_filter_base", [])
+last_database_selection = st.session_state.get(
+    DATABASE_CHART_LAST_SELECTION_KEY
+)
+if not sidebar_databases:
+    st.session_state.pop(DATABASE_CHART_LAST_SELECTION_KEY, None)
+elif sidebar_databases != [last_database_selection]:
+    st.session_state[DATABASE_CHART_LAST_SELECTION_KEY] = (
+        sidebar_databases[0] if len(sidebar_databases) == 1 else None
+    )
 
 type_summary = simple_summary(df_filtered, TYPE_COL)
 subtype_summary = simple_summary(df_filtered, SUBTYPE_COL)
@@ -1106,7 +1134,23 @@ with tabs[0]:
             st.info("No hay clases de repositorio disponibles.")
 
     if not database_summary.empty:
-        st.plotly_chart(
+        selected_database_filter = st.session_state.get(
+            "relation_filter_base", []
+        )
+        if selected_database_filter:
+            database_header = st.columns([3, 1])
+            database_header[0].caption(
+                "Base documental seleccionada: "
+                + ", ".join(selected_database_filter)
+            )
+            if database_header[1].button(
+                "Limpiar base", key="database_chart_clear"
+            ):
+                st.session_state[DATABASE_CHART_PENDING_KEY] = {
+                    "action": "clear"
+                }
+                st.rerun()
+        database_event = st.plotly_chart(
             horizontal_bar(
                 database_summary,
                 "categoria",
@@ -1114,7 +1158,24 @@ with tabs[0]:
                 max_categories_chart,
             ),
             width="stretch",
+            key=(
+                "database_chart_"
+                f"{st.session_state.get(DATABASE_CHART_VERSION_KEY, 0)}"
+            ),
+            on_select="rerun",
+            selection_mode="points",
         )
+        selected_database_labels = selected_bar_labels(database_event)
+        if selected_database_labels:
+            selected_database = selected_database_labels[0]
+            if selected_database != st.session_state.get(
+                DATABASE_CHART_LAST_SELECTION_KEY
+            ):
+                st.session_state[DATABASE_CHART_PENDING_KEY] = {
+                    "action": "select",
+                    "value": selected_database,
+                }
+                st.rerun()
     else:
         st.info("No hay datos para mostrar.")
 

@@ -186,12 +186,12 @@ def build_publications(
     ).merge(databases, on=PUBLICATION_ID, how="left", validate="one_to_one")
     publications["USAR_PARA_CONTEO_UNICO"] = "SI"
     publications[PUBLIC_TYPE] = publications["TIPO_PUBLICACION_NORM"].replace(
-        {"Artículo de conferencia": "Publicación de evento científico"}
+        {"Artículo de conferencia": "Artículo"}
     )
     publications[PUBLIC_SUBTYPE] = publications["TIPO_PUBLICACION_NORM"].map(
         {
             "Artículo": "Artículo científico",
-            "Artículo de conferencia": "Artículo de conferencia",
+            "Artículo de conferencia": "Publicación de evento científico",
         }
     )
 

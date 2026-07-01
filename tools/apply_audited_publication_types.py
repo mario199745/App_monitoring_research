@@ -22,6 +22,14 @@ def main() -> None:
     parser.add_argument("--audit", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--decisions", type=Path, required=True)
+    parser.add_argument(
+        "--group-events-as-articles",
+        action="store_true",
+        help=(
+            "Agrupa las publicaciones de evento en Artículo y usa "
+            "Publicación de evento científico como subtipo."
+        ),
+    )
     args = parser.parse_args()
 
     audit = pd.read_excel(
@@ -32,6 +40,17 @@ def main() -> None:
     if missing:
         raise ValueError(f"Faltan columnas en la auditoría: {sorted(missing)}")
     decisions = audit[[ID, "TIPO_PROPUESTO", "SUBTIPO_PROPUESTO"]].copy()
+    if args.group_events_as_articles:
+        event_mask = (
+            decisions["TIPO_PROPUESTO"].eq("Publicación de evento científico")
+            | decisions["SUBTIPO_PROPUESTO"].isin(
+                ["Artículo de conferencia", "Ponencia o memoria de evento"]
+            )
+        )
+        decisions.loc[event_mask, "TIPO_PROPUESTO"] = "Artículo"
+        decisions.loc[event_mask, "SUBTIPO_PROPUESTO"] = (
+            "Publicación de evento científico"
+        )
     if decisions[ID].isna().any() or decisions[ID].duplicated().any():
         raise ValueError("Los IDs de la auditoría no son completos y únicos.")
     if decisions[["TIPO_PROPUESTO", "SUBTIPO_PROPUESTO"]].isna().any().any():

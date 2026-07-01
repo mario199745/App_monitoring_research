@@ -624,6 +624,17 @@ df_filtered = apply_simple_filters(df_mode)
 df_filtered = apply_relation_filters(df_filtered, relations)
 
 type_summary = simple_summary(df_filtered, TYPE_COL)
+publication_hierarchy = (
+    df_filtered.loc[
+        non_empty_mask(df_filtered[TYPE_COL])
+        & non_empty_mask(df_filtered[SUBTYPE_COL]),
+        [RECORD_ID_COL, TYPE_COL, SUBTYPE_COL],
+    ]
+    .groupby([TYPE_COL, SUBTYPE_COL])[RECORD_ID_COL]
+    .nunique()
+    .rename("Publicaciones")
+    .reset_index()
+)
 database_summary = relation_summary(
     relations.get("base", pd.DataFrame()),
     df_filtered,
@@ -736,13 +747,6 @@ with tabs[0]:
                 ),
                 width="stretch",
             )
-            st.caption(
-                "Subcategorías: Artículo — científico, revisión y nota "
-                "científica; Tesis — pregrado, maestría, doctorado, "
-                "suficiencia profesional y niveles no especificados; "
-                "Publicación de evento científico — artículo de conferencia "
-                "y ponencia o memoria de evento."
-            )
         else:
             st.info("No hay datos para mostrar.")
     with col_b:
@@ -758,6 +762,26 @@ with tabs[0]:
             )
         else:
             st.info("No hay clases de repositorio disponibles.")
+
+    if not publication_hierarchy.empty:
+        hierarchy_figure = px.sunburst(
+            publication_hierarchy,
+            path=[TYPE_COL, SUBTYPE_COL],
+            values="Publicaciones",
+            title="Tipo y subcategoría de publicación",
+            color=TYPE_COL,
+        )
+        hierarchy_figure.update_traces(
+            textinfo="label+value+percent parent",
+            hovertemplate=(
+                "<b>%{label}</b><br>Publicaciones: %{value}<br>"
+                "Proporción: %{percentParent:.1%}<extra></extra>"
+            ),
+        )
+        hierarchy_figure.update_layout(
+            margin=dict(t=60, l=10, r=10, b=10),
+        )
+        st.plotly_chart(hierarchy_figure, width="stretch")
 
     if not database_summary.empty:
         st.plotly_chart(

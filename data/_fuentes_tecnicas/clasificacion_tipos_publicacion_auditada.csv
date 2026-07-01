@@ -789,12 +789,12 @@ PUB-000787,Artículo,Artículo científico
 PUB-000788,Tesis,Tesis de posgrado no especificada
 PUB-000789,Artículo,Artículo científico
 PUB-000790,Artículo,Artículo científico
-PUB-000791,Publicación de evento científico,Artículo de conferencia
+PUB-000791,Artículo,Publicación de evento científico
 PUB-000792,Artículo,Artículo científico
 PUB-000793,Artículo,Artículo científico
 PUB-000794,Artículo,Artículo científico
 PUB-000795,Artículo,Artículo científico
-PUB-000796,Publicación de evento científico,Artículo de conferencia
+PUB-000796,Artículo,Publicación de evento científico
 PUB-000797,Artículo,Artículo científico
 PUB-000798,Artículo,Artículo científico
 PUB-000799,Artículo,Artículo científico
@@ -904,7 +904,7 @@ PUB-000902,Artículo,Artículo científico
 PUB-000903,Artículo,Artículo científico
 PUB-000904,Artículo,Artículo científico
 PUB-000905,Artículo,Artículo científico
-PUB-000906,Publicación de evento científico,Artículo de conferencia
+PUB-000906,Artículo,Publicación de evento científico
 PUB-000907,Tesis,Tesis de pregrado
 PUB-000908,Artículo,Artículo científico
 PUB-000909,Artículo,Artículo científico
@@ -1222,7 +1222,7 @@ PUB-001220,Tesis,Tesis de pregrado
 PUB-001221,Tesis,Tesis de pregrado
 PUB-001222,Artículo,Artículo científico
 PUB-001223,Artículo,Artículo científico
-PUB-001224,Publicación de evento científico,Artículo de conferencia
+PUB-001224,Artículo,Publicación de evento científico
 PUB-001225,Artículo,Artículo científico
 PUB-001226,Artículo,Artículo científico
 PUB-001227,Artículo,Artículo científico
@@ -1328,7 +1328,7 @@ PUB-001326,Tesis,Tesis de posgrado no especificada
 PUB-001327,Tesis,Tesis de posgrado no especificada
 PUB-001328,Tesis,Tesis de posgrado no especificada
 PUB-001329,Tesis,Tesis de posgrado no especificada
-PUB-001330,Publicación de evento científico,Artículo de conferencia
+PUB-001330,Artículo,Publicación de evento científico
 PUB-001331,Artículo,Artículo científico
 PUB-001332,Artículo,Artículo científico
 PUB-001333,Artículo,Artículo científico
@@ -5366,7 +5366,7 @@ PUB-005364,Artículo,Artículo científico
 PUB-005365,Artículo,Artículo científico
 PUB-005366,Artículo,Artículo científico
 PUB-005367,Artículo,Artículo científico
-PUB-005368,Publicación de evento científico,Ponencia o memoria de evento
+PUB-005368,Artículo,Publicación de evento científico
 PUB-005369,Artículo,Artículo científico
 PUB-005370,Artículo,Artículo científico
 PUB-005371,Artículo,Artículo científico

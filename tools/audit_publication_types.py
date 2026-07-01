@@ -135,8 +135,8 @@ def classify(row: pd.Series) -> dict[str, object]:
 
     if raw_type == "articulo de conferencia":
         result.update(
-            TIPO_PROPUESTO="Publicación de evento científico",
-            SUBTIPO_PROPUESTO="Artículo de conferencia",
+            TIPO_PROPUESTO="Artículo",
+            SUBTIPO_PROPUESTO="Publicación de evento científico",
             CONFIANZA_PROPUESTA="Alta",
             REQUIERE_REVISION_MANUAL="NO",
             EVIDENCIA_CLASIFICACION="Tipo original=Artículo de conferencia",
@@ -147,8 +147,8 @@ def classify(row: pd.Series) -> dict[str, object]:
     event_subtype, event_match = first_match(title, {"Publicación de evento"})
     if event_subtype and not scholarly_signals:
         result.update(
-            TIPO_PROPUESTO="Publicación de evento científico",
-            SUBTIPO_PROPUESTO="Ponencia o memoria de evento",
+            TIPO_PROPUESTO="Artículo",
+            SUBTIPO_PROPUESTO="Publicación de evento científico",
             CONFIANZA_PROPUESTA="Media",
             REQUIERE_REVISION_MANUAL="SI",
             EVIDENCIA_CLASIFICACION=f"Indicador en título: {event_match}",

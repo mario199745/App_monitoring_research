@@ -123,7 +123,7 @@ def main() -> None:
         or not df["HUELLA_PUBLICACION_PERSISTENTE"].is_unique
     ):
         raise AssertionError("Las huellas persistentes no son completas y únicas.")
-    allowed_types = {"Artículo", "Tesis", "Publicación de evento científico"}
+    allowed_types = {"Artículo", "Tesis"}
     if set(df["TIPO_PUBLICACION_PUBLICO"].dropna()) != allowed_types:
         raise AssertionError("TIPO_PUBLICACION_PUBLICO no cumple la jerarquía.")
     allowed_subtypes = {
@@ -136,8 +136,7 @@ def main() -> None:
         "Tesis de posgrado no especificada",
         "Tesis de nivel no especificado",
         "Trabajo de suficiencia profesional",
-        "Artículo de conferencia",
-        "Ponencia o memoria de evento",
+        "Publicación de evento científico",
     }
     if not set(
         df["SUBTIPO_PUBLICACION_PUBLICO"].dropna()
@@ -145,15 +144,8 @@ def main() -> None:
         raise AssertionError("SUBTIPO_PUBLICACION_PUBLICO contiene valores inválidos.")
     if df["SUBTIPO_PUBLICACION_PUBLICO"].isna().any():
         raise AssertionError("Existen publicaciones sin subtipo documental.")
-    conference_count = int(
-        df["SUBTIPO_PUBLICACION_PUBLICO"].eq("Artículo de conferencia").sum()
-    )
-    if conference_count != 5:
-        raise AssertionError(
-            f"Se esperaban 5 artículos de conferencia y se obtuvieron {conference_count}."
-        )
     event_count = int(
-        df["TIPO_PUBLICACION_PUBLICO"]
+        df["SUBTIPO_PUBLICACION_PUBLICO"]
         .eq("Publicación de evento científico")
         .sum()
     )

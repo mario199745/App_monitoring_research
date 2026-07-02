@@ -120,6 +120,45 @@ REQUIRED_COLUMNS = [
     RECORD_ID_COL,
 ]
 
+PUBLIC_EXPORT_COLUMNS = [
+    RECORD_ID_COL,
+    "General_ Título",
+    "General_ Autor(es)",
+    YEAR_COL,
+    "General_ Resumen",
+    "General_ Palabras clave del documento",
+    "General_ Idioma",
+    "General_ DOI",
+    "General_ Enlace",
+    TYPE_COL,
+    SUBTYPE_COL,
+    ACADEMIC_GRADE_COL,
+    ACADEMIC_LEVEL_COL,
+    POSTGRAD_DETAIL_COL,
+    "General_ Publicación Nacional/Extranjera",
+    "General_ Tipo de contenido (TD=texto disponible, TN=Texto no disponible)",
+    "General_ Nombre de revista",
+    "General_ Volume",
+    "General_ Issue",
+    "General_ Page start",
+    "General_ Page end",
+    "General_ Número de páginas",
+    "General_ Lugar de Publicación",
+    "BASES_DOCUMENTALES_CONSOLIDADAS",
+    "REPOSITORIOS_CONSOLIDADOS",
+    "INSTITUCIONES_CONSOLIDADAS",
+    "General_ SIGLAS UNIVERSIDAD/INSTITUCIÓN",
+    "REGIONES_ESTUDIO_CONSOLIDADAS",
+    "Ubicación_Ambito de estudio/Tipo de ecosistema (acuático, terrestre)",
+    "Ubicación_Localidad (comunidad campesina u otros)",
+    "Ubicación_Distrito",
+    "Ubicación_Provincia",
+    "Especie_Nombre científico",
+    "AREAS_TEMATICAS_CONSOLIDADAS",
+    "EJES_TEMATICOS_CONSOLIDADOS",
+    "LINEAS_INVESTIGACION_CONSOLIDADAS",
+]
+
 
 def normalize_key(value) -> str:
     if pd.isna(value):
@@ -307,6 +346,28 @@ def visible_relation(
     visible_ids = set(df_scope[RECORD_ID_COL].dropna().astype(str))
     result = clean_relation(relation, include_others)
     return result[result[RECORD_ID_COL].isin(visible_ids)].copy()
+
+
+def consolidated_relation_column(
+    relation: pd.DataFrame,
+    df_scope: pd.DataFrame,
+    output_column: str,
+) -> pd.DataFrame:
+    """Devuelve una columna pública con categorías únicas separadas por punto y coma."""
+    visible = visible_relation(relation, df_scope, include_others=True)
+    if visible.empty:
+        return pd.DataFrame(columns=[RECORD_ID_COL, output_column])
+    consolidated = (
+        visible.groupby(RECORD_ID_COL)["categoria"]
+        .agg(
+            lambda values: "; ".join(
+                sorted(set(values.dropna().astype(str).str.strip()) - {""})
+            )
+        )
+        .rename(output_column)
+        .reset_index()
+    )
+    return consolidated
 
 
 def relation_summary(
@@ -1493,7 +1554,7 @@ with tabs[5]:
     )
     st.caption(
         "La tabla muestra hasta 500 registros. Las descargas contienen todos "
-        "los registros resultantes de los filtros."
+        "los registros resultantes de los filtros y únicamente campos de uso público."
     )
 
     export_data = df_filtered.copy()
@@ -1515,6 +1576,37 @@ with tabs[5]:
         right_index=True,
         how="left",
         validate="one_to_one",
+    )
+    for relation_key, output_column in [
+        ("base", "BASES_DOCUMENTALES_CONSOLIDADAS"),
+        ("repositorio", "REPOSITORIOS_CONSOLIDADOS"),
+        ("institucion", "INSTITUCIONES_CONSOLIDADAS"),
+        ("area", "AREAS_TEMATICAS_CONSOLIDADAS"),
+        ("eje", "EJES_TEMATICOS_CONSOLIDADOS"),
+        ("linea", "LINEAS_INVESTIGACION_CONSOLIDADAS"),
+    ]:
+        export_data = export_data.merge(
+            consolidated_relation_column(
+                relations.get(relation_key, pd.DataFrame()),
+                df_filtered,
+                output_column,
+            ),
+            on=RECORD_ID_COL,
+            how="left",
+            validate="one_to_one",
+        )
+    export_columns = [
+        column for column in PUBLIC_EXPORT_COLUMNS if column in export_data.columns
+    ]
+    export_data = export_data[export_columns]
+    territorial_export = (
+        territorial_export.loc[
+            territorial_export.get("DEP_EN_GEOJSON", False).astype(bool),
+            [RECORD_ID_COL, "DEPARTAMEN_GEO"],
+        ]
+        .drop_duplicates()
+        .rename(columns={"DEPARTAMEN_GEO": "REGION_ESTUDIO"})
+        .sort_values([RECORD_ID_COL, "REGION_ESTUDIO"])
     )
     excel_bytes = to_excel_bytes(
         export_data,

@@ -13,6 +13,11 @@ La base principal contiene una fila por `ID_PUBLICACION_PROPUESTA` e incluye
 dimensiones expandidas para bases documentales, repositorios, áreas, ejes,
 líneas, regiones e instituciones.
 
+Las descargas son vistas públicas: excluyen identificadores internos, reglas
+de coincidencia, huellas y campos de control. Las variables multivalor se
+entregan consolidadas con `;`; el Excel añade `Detalle_territorial` con la
+relación publicación–región de estudio.
+
 `DIM_REPOSITORIOS` conserva la clasificación técnica en `CLASE_REPOSITORIO` y
 presenta una clasificación simplificada en `CLASE_REPOSITORIO_PUBLICA`. La
 interfaz utiliza cinco grupos: `Buscadores académicos`, `Repositorios

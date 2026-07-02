@@ -1,4 +1,4 @@
-import io
+﻿import io
 import json
 import re
 import unicodedata
@@ -18,7 +18,7 @@ PUBLIC_REPOSITORY_CLASS_COL = "CLASE_REPOSITORIO_PUBLICA"
 
 
 st.set_page_config(
-    page_title="Revisión bibliográfica DEI",
+    page_title="MONITOREO DE INVESTIGACION",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -788,8 +788,8 @@ st.markdown(
 st.markdown(
     """
     <div class="hero">
-      <div class="eyebrow">CONCYTEC · Monitoreo de investigación</div>
-      <h1>Revisión bibliográfica DEI</h1>
+
+      <h1>MONITOREO DE INVESTIGACION</h1>
       <p>Explora publicaciones consolidadas sobre recursos forestales,
       biodiversidad y fauna silvestre. Las categorías múltiples se
       contabilizan por separado.</p>
@@ -1451,3 +1451,5 @@ st.caption(
     f"Fuente principal: {app_file.name} · Fuente territorial: "
     f"{territorial_file.name}"
 )
+
+

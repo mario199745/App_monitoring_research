@@ -608,18 +608,30 @@ def to_excel_bytes(
     return output.getvalue()
 
 
-def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
+def horizontal_bar(
+    data: pd.DataFrame,
+    category: str,
+    title: str,
+    limit: int,
+    description: str | None = None,
+):
     plot_data = data.head(limit).sort_values("Publicaciones").copy()
     plot_data["Publicaciones_formato"] = plot_data["Publicaciones"].map(
         human_int
     )
+    title_text = title
+    if description:
+        title_text += (
+            "<br><span style='font-size:11px;color:rgba(23,53,45,0.58);'>"
+            f"{description}</span>"
+        )
     figure = px.bar(
         plot_data,
         x="Publicaciones",
         y=category,
         orientation="h",
         text="Publicaciones_formato",
-        title=title,
+        title=title_text,
         color_discrete_sequence=["#256d5b"],
         labels={"Publicaciones": "N° de Publicaciones"},
     )
@@ -628,7 +640,7 @@ def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
         showlegend=False,
         xaxis_title="N° de Publicaciones",
         yaxis_title="",
-        margin=dict(l=10, r=10, t=45, b=10),
+        margin=dict(l=10, r=10, t=65 if description else 45, b=10),
         separators=", ",
         clickmode="event+select",
     )
@@ -1041,6 +1053,9 @@ with tabs[0]:
                 + chart_data[POSTGRAD_DETAIL_COL].astype(str)
             )
             chart_title = "Tesis de posgrado — detalle"
+            chart_description = (
+                "Muestra cuántas tesis de posgrado hay en cada nivel académico."
+            )
         elif publication_level == "subtypes" and selected_publication_type:
             st.caption(f"Tipo seleccionado: {selected_publication_type}")
             button_columns = st.columns(2)
@@ -1066,10 +1081,16 @@ with tabs[0]:
                 + chart_data[SUBTYPE_COL].astype(str)
             )
             chart_title = f"{selected_publication_type} — subcategorías"
+            chart_description = (
+                "Muestra cómo se distribuyen las publicaciones dentro del tipo seleccionado."
+            )
         else:
             chart_data = type_summary
             chart_category = TYPE_COL
             chart_title = "Tipo de publicación"
+            chart_description = (
+                "Compara cuántas publicaciones corresponden a cada tipo."
+            )
 
         if not chart_data.empty:
             publication_event = st.plotly_chart(
@@ -1078,6 +1099,7 @@ with tabs[0]:
                     chart_category,
                     chart_title,
                     max_categories_chart,
+                    chart_description,
                 ),
                 width="stretch",
                 key=(
@@ -1142,10 +1164,16 @@ with tabs[0]:
                 + repository_chart_data["categoria"].astype(str)
             )
             repository_title = f"{selected_repository_class} — repositorios"
+            repository_description = (
+                "Muestra los repositorios incluidos en la clase seleccionada."
+            )
         else:
             repository_chart_data = repo_class_summary
             repository_category = "categoria"
             repository_title = "Publicaciones por clase de repositorio"
+            repository_description = (
+                "Agrupa las publicaciones según el tipo de repositorio donde fueron encontradas."
+            )
 
         if not repository_chart_data.empty:
             repository_event = st.plotly_chart(
@@ -1154,6 +1182,7 @@ with tabs[0]:
                     repository_category,
                     repository_title,
                     max_categories_chart,
+                    repository_description,
                 ),
                 width="stretch",
                 key=(
@@ -1210,6 +1239,7 @@ with tabs[0]:
                 "categoria",
                 "Publicaciones por base documental",
                 max_categories_chart,
+                "Muestra en qué bases fueron encontradas; una publicación puede estar en varias.",
             ),
             width="stretch",
             key=(

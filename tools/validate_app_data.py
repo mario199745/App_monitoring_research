@@ -68,10 +68,8 @@ def latest_file(data_dir: Path, pattern: str) -> Path:
 def main() -> None:
     data_dir = Path(__file__).resolve().parents[1] / "data"
     app_file = latest_file(data_dir, "BD_APP_FINAL_*.xlsx")
-    territorial_file = latest_file(data_dir, "BD_APP_TERRITORIAL_*.xlsx")
 
     app_xl = pd.ExcelFile(app_file, engine="openpyxl")
-    territorial_xl = pd.ExcelFile(territorial_file, engine="openpyxl")
 
     missing_sheets = [
         sheet
@@ -95,7 +93,7 @@ def main() -> None:
     missing_territorial = [
         sheet
         for sheet in REQUIRED_TERRITORIAL_SHEETS
-        if sheet not in territorial_xl.sheet_names
+        if sheet not in app_xl.sheet_names
     ]
     if missing_territorial:
         raise AssertionError(
@@ -459,7 +457,7 @@ def main() -> None:
         )
 
     territorial = pd.read_excel(
-        territorial_file,
+        app_file,
         sheet_name="REGIONES_EXPANDIDAS",
         dtype="string",
         engine="openpyxl",
@@ -471,7 +469,7 @@ def main() -> None:
         raise AssertionError("La base territorial contiene identificadores huérfanos.")
 
     print(f"APP_FILE={app_file.name}")
-    print(f"TERRITORIAL_FILE={territorial_file.name}")
+    print("TERRITORIAL_SOURCE=INTEGRATED")
     print(f"ROWS={len(df)}")
     print(f"COLUMNS={len(df.columns)}")
     print(f"UNIQUE_IDS={df[RECORD_ID_COL].nunique()}")

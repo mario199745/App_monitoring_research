@@ -1,0 +1,7 @@
+﻿"control","resultado","cantidad","detalle"
+"Unicidad ID_PUBLICACION_PROPUESTA","OK","0","Duplicados en BD_APP"
+"Consistencia REGISTROS_EN_GRUPO","OK","0","No coincide con REGISTRO_PUBLICACION"
+"Consistencia representante","OK","0","Representante inconsistente dentro del mapeo"
+"Publicaciones con múltiples regiones","ADVERTENCIA","281","DIM_REGIONES_NORMALIZADAS conserva más de una categoría"
+"Región principal no contenida en dimensión","ERROR","55","REGION_NORM_SUGERIDA no aparece en DIM_REGIONES_NORMALIZADAS"
+"Pérdida potencial al exportar región escalar","ALTO","281","Publicaciones multirregionales reducidas a REGION_NORM_SUGERIDA en BD_APP"

@@ -5,10 +5,9 @@ recursos forestales, biodiversidad y fauna silvestre.
 
 ## Datos
 
-El aplicativo utiliza el par más reciente encontrado en `data`:
-
-- `BD_APP_FINAL_*.xlsx`
-- `BD_APP_TERRITORIAL_*.xlsx`
+El aplicativo utiliza la base maestra integrada más reciente encontrada en
+`data` con el patrón `BD_APP_FINAL_*.xlsx`. El mismo libro contiene la hoja
+principal, dimensiones, auditorías y las hojas territoriales.
 
 La base principal contiene una fila por `ID_PUBLICACION_PROPUESTA` e incluye
 dimensiones expandidas para bases documentales, repositorios, áreas, ejes,

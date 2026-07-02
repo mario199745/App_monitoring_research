@@ -28,7 +28,6 @@ GEOJSON_PATH = DATA_DIR / "GEO" / "DEP_PERU.geojson"
 
 APP_FILE_PATTERN = "BD_APP_FINAL_*.xlsx"
 APP_SHEET = "BD_APP"
-TERRITORIAL_FILE_PATTERN = "BD_APP_TERRITORIAL_*.xlsx"
 TERRITORIAL_MAP_SHEET = "MAPA_DEPARTAMENTOS"
 TERRITORIAL_EXPANDED_SHEET = "REGIONES_EXPANDIDAS"
 
@@ -373,6 +372,32 @@ def simple_summary(df_scope: pd.DataFrame, column: str) -> pd.DataFrame:
     )
 
 
+def publication_drilldown_summary(
+    filtered_scope: pd.DataFrame,
+    full_scope: pd.DataFrame,
+    publication_type: str | None,
+    category_column: str,
+    publication_subtype: str | None = None,
+) -> pd.DataFrame:
+    """Resume un nivel y evita que filtros residuales oculten la jerarquía."""
+    summary = simple_summary(filtered_scope, category_column)
+    if not summary.empty or not publication_type:
+        return summary
+
+    fallback_scope = full_scope[
+        full_scope[TYPE_COL].fillna("").astype(str).str.strip().eq(publication_type)
+    ]
+    if publication_subtype:
+        fallback_scope = fallback_scope[
+            fallback_scope[SUBTYPE_COL]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .eq(publication_subtype)
+        ]
+    return simple_summary(fallback_scope, category_column)
+
+
 def apply_simple_filters(df_scope: pd.DataFrame) -> pd.DataFrame:
     filtered = df_scope.copy()
     selected_types = []
@@ -567,12 +592,18 @@ def to_excel_bytes(
     df_main: pd.DataFrame,
     summary_type: pd.DataFrame,
     summary_region: pd.DataFrame,
+    territorial_detail: pd.DataFrame,
 ) -> bytes:
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         df_main.to_excel(writer, index=False, sheet_name="Datos_filtrados")
         summary_type.to_excel(writer, index=False, sheet_name="Resumen_tipo")
         summary_region.to_excel(writer, index=False, sheet_name="Resumen_region")
+        territorial_detail.to_excel(
+            writer,
+            index=False,
+            sheet_name="Detalle_territorial",
+        )
     output.seek(0)
     return output.getvalue()
 
@@ -611,12 +642,10 @@ def horizontal_bar(data: pd.DataFrame, category: str, title: str, limit: int):
 
 
 app_file = latest_file(APP_FILE_PATTERN)
-territorial_file = latest_file(TERRITORIAL_FILE_PATTERN)
+territorial_file = app_file
 
-if app_file is None or territorial_file is None:
-    st.error(
-        "No se encontró el par de bases principal y territorial en la carpeta data."
-    )
+if app_file is None:
+    st.error("No se encontró la base maestra integrada en la carpeta data.")
     st.stop()
 if not GEOJSON_PATH.exists():
     st.error(f"No se encontró el GeoJSON requerido: {GEOJSON_PATH}")
@@ -852,9 +881,18 @@ elif sidebar_databases != [last_database_selection]:
     )
 
 type_summary = simple_summary(df_filtered, TYPE_COL)
-subtype_summary = simple_summary(df_filtered, SUBTYPE_COL)
-postgraduate_detail_summary = simple_summary(
-    df_filtered, POSTGRAD_DETAIL_COL
+subtype_summary = publication_drilldown_summary(
+    df_filtered,
+    df_mode,
+    chart_type,
+    SUBTYPE_COL,
+)
+postgraduate_detail_summary = publication_drilldown_summary(
+    df_filtered,
+    df_mode,
+    chart_type,
+    POSTGRAD_DETAIL_COL,
+    publication_subtype="Tesis de posgrado",
 )
 database_summary = relation_summary(
     relations.get("base", pd.DataFrame()),
@@ -1428,8 +1466,33 @@ with tabs[5]:
         "los registros resultantes de los filtros."
     )
 
-    excel_bytes = to_excel_bytes(df_filtered, type_summary, region_summary)
-    csv_bytes = df_filtered.to_csv(index=False).encode("utf-8-sig")
+    export_data = df_filtered.copy()
+    territorial_export = filtered_expanded_regions(
+        df_filtered,
+        expanded_regions,
+    )
+    consolidated_regions = (
+        territorial_export.loc[
+            territorial_export.get("DEP_EN_GEOJSON", False).astype(bool)
+        ]
+        .groupby(RECORD_ID_COL)["DEPARTAMEN_GEO"]
+        .agg(lambda values: "; ".join(sorted(set(values.dropna().astype(str)))))
+        .rename("REGIONES_ESTUDIO_CONSOLIDADAS")
+    )
+    export_data = export_data.merge(
+        consolidated_regions,
+        left_on=RECORD_ID_COL,
+        right_index=True,
+        how="left",
+        validate="one_to_one",
+    )
+    excel_bytes = to_excel_bytes(
+        export_data,
+        type_summary,
+        region_summary,
+        territorial_export,
+    )
+    csv_bytes = export_data.to_csv(index=False).encode("utf-8-sig")
     download_a, download_b = st.columns(2)
     download_a.download_button(
         "Descargar Excel filtrado",
@@ -1448,8 +1511,7 @@ with tabs[5]:
 
 st.divider()
 st.caption(
-    f"Fuente principal: {app_file.name} · Fuente territorial: "
-    f"{territorial_file.name}"
+    f"Fuente maestra integrada: {app_file.name}"
 )
 
 

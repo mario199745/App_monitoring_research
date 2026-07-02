@@ -778,9 +778,6 @@ def main() -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     app_output = data_dir / f"BD_APP_FINAL_{timestamp}_DEDUPLICADA.xlsx"
-    territorial_output = (
-        data_dir / f"BD_APP_TERRITORIAL_{timestamp}_DEDUPLICADA.xlsx"
-    )
     summary = pd.DataFrame(
         [
             {"indicador": "fecha_adaptacion", "valor": datetime.now().isoformat(timespec="seconds")},
@@ -842,6 +839,18 @@ def main() -> None:
                 }
                 for sheet in dimensions
             ],
+            *[
+                {
+                    "hoja": sheet,
+                    "proposito": "Componente territorial integrado",
+                    "clave": (
+                        f"{PUBLICATION_ID} + DEP_KEY"
+                        if sheet == "REGIONES_EXPANDIDAS"
+                        else "DEP_KEY"
+                    ),
+                }
+                for sheet in territorial_sheets
+            ],
         ]
     )
 
@@ -865,19 +874,10 @@ def main() -> None:
         id_merges.to_excel(writer, sheet_name="FUSIONES_IDS", index=False)
         for sheet, dimension in dimensions.items():
             dimension.to_excel(writer, sheet_name=sheet, index=False)
-        summary.to_excel(writer, sheet_name="RESUMEN_ADAPTACION", index=False)
-        contract.to_excel(writer, sheet_name="CONTRATO_DATOS", index=False)
-
-    with pd.ExcelWriter(territorial_output, engine="xlsxwriter") as writer:
         for sheet, frame in territorial_sheets.items():
             frame.to_excel(writer, sheet_name=sheet, index=False)
-        pd.DataFrame(
-            [
-                {"indicador": "fecha_adaptacion", "valor": datetime.now().isoformat(timespec="seconds")},
-                {"indicador": "base_principal_asociada", "valor": app_output.name},
-                {"indicador": "publicaciones_consolidadas", "valor": len(publications)},
-            ]
-        ).to_excel(writer, sheet_name="TRAZABILIDAD_ADAPTACION", index=False)
+        summary.to_excel(writer, sheet_name="RESUMEN_ADAPTACION", index=False)
+        contract.to_excel(writer, sheet_name="CONTRATO_DATOS", index=False)
 
     trace = docs_dir / "TRAZABILIDAD_BASE_ADAPTADA.md"
     trace.write_text(
@@ -891,7 +891,7 @@ def main() -> None:
 - **Base territorial de origen:** `{territorial_source}`
 - **Fuentes de reclasificación de repositorios:** {', '.join(f'`{path}`' for path, _ in repository_requests)}
 - **Base principal:** `{app_output.name}`
-- **Base territorial:** `{territorial_output.name}`
+- **Base territorial:** integrada en `{app_output.name}`
 - **Registros de origen:** {len(source):,}
 - **Publicaciones consolidadas:** {len(publications):,}
 - **Registros redundantes consolidados:** {len(source) - len(publications):,}
@@ -951,7 +951,7 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"APP_OUTPUT={app_output}")
-    print(f"TERRITORIAL_OUTPUT={territorial_output}")
+    print("TERRITORIAL_OUTPUT=INTEGRATED_IN_APP_OUTPUT")
     print(f"TRACE={trace}")
     print(f"SOURCE_ROWS={len(source)}")
     print(f"PUBLICATIONS={len(publications)}")

@@ -13,6 +13,26 @@ assert_clean(app, "carga inicial")
 assert len(app.metric) == 4, "Se esperaban cuatro indicadores principales."
 assert any("MONITOREO DE INVESTIGACION" in item.value for item in app.markdown)
 
+year_filter = next(
+    widget
+    for widget in app.slider
+    if widget.label.startswith("Periodo de ")
+)
+full_period = year_filter.value
+initial_publications = app.metric[0].value
+year_filter.set_range(full_period[0], min(full_period[0] + 10, full_period[1]))
+app.run()
+assert_clean(app, "filtro temporal")
+assert app.metric[0].value != initial_publications
+year_filter = next(
+    widget
+    for widget in app.slider
+    if widget.label.startswith("Periodo de ")
+)
+year_filter.set_range(*full_period)
+app.run()
+assert_clean(app, "restablecimiento del periodo")
+
 type_filter = next(
     widget
     for widget in app.sidebar.multiselect

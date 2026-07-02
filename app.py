@@ -59,6 +59,7 @@ REPOSITORY_CHART_VERSION_KEY = "_repository_chart_version"
 DATABASE_CHART_PENDING_KEY = "_database_chart_pending"
 DATABASE_CHART_VERSION_KEY = "_database_chart_version"
 DATABASE_CHART_LAST_SELECTION_KEY = "_database_chart_last_selection"
+TIME_YEAR_FILTER_KEY = "time_filter_year_range"
 
 SIMPLE_FILTERS = [
     (TYPE_COL, "Tipo de publicación"),
@@ -462,6 +463,26 @@ def publication_drilldown_summary(
 def apply_simple_filters(df_scope: pd.DataFrame) -> pd.DataFrame:
     filtered = df_scope.copy()
     selected_types = []
+    year_values = pd.to_numeric(df_scope[YEAR_COL], errors="coerce").dropna()
+    if not year_values.empty:
+        min_year = int(year_values.min())
+        max_year = int(year_values.max())
+        if min_year < max_year:
+            year_range = st.session_state.get(
+                TIME_YEAR_FILTER_KEY,
+                (min_year, max_year),
+            )
+            if year_range != (min_year, max_year):
+                filtered_years = pd.to_numeric(
+                    filtered[YEAR_COL], errors="coerce"
+                )
+                filtered = filtered[
+                    filtered_years.between(
+                        year_range[0],
+                        year_range[1],
+                        inclusive="both",
+                    )
+                ]
     for column, label in SIMPLE_FILTERS:
         if column not in filtered.columns:
             continue
@@ -1414,6 +1435,24 @@ with tabs[1]:
 
 with tabs[2]:
     st.subheader("Evolución temporal")
+    available_years = pd.to_numeric(df_mode[YEAR_COL], errors="coerce").dropna()
+    if not available_years.empty:
+        min_available_year = int(available_years.min())
+        max_available_year = int(available_years.max())
+        selected_year_range = st.slider(
+            "Periodo de publicación",
+            min_value=min_available_year,
+            max_value=max_available_year,
+            value=(min_available_year, max_available_year),
+            key=TIME_YEAR_FILTER_KEY,
+            help=(
+                "Mueve los extremos para filtrar indicadores, gráficos, datos y descargas."
+            ),
+        )
+        if selected_year_range != (min_available_year, max_available_year):
+            st.caption(
+                "Filtro temporal activo. Los registros sin año quedan fuera del periodo."
+            )
     temporal = df_filtered[[RECORD_ID_COL, YEAR_COL, TYPE_COL]].copy()
     temporal[YEAR_COL] = pd.to_numeric(temporal[YEAR_COL], errors="coerce")
     temporal = temporal.dropna(subset=[YEAR_COL])

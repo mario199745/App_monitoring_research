@@ -763,23 +763,39 @@ if DATABASE_CHART_PENDING_KEY in st.session_state:
 st.markdown(
     """
     <style>
-    .block-container {padding-top: 1.4rem; padding-bottom: 2rem;}
-    div[data-testid="stMetric"] {
-        background: #f5f8f7;
-        border: 1px solid #dbe7e3;
-        padding: 0.8rem;
-        border-radius: 0.7rem;
-    }
+      :root { --forest:#176B55; --sand:#F3EFE6; --ink:#17352D; }
+      .stApp { background:linear-gradient(180deg,#F8FAF7 0,#FFFFFF 22rem); }
+      .block-container { padding-top:1.4rem; padding-bottom:2rem; }
+      [data-testid="stSidebar"] { background:#123E34; }
+      [data-testid="stSidebar"] * { color:#F7F2E8; }
+      div[data-testid="stMetric"] {
+        background:white; border:1px solid #DDE7E1; border-radius:14px;
+        padding:1rem 1.1rem; box-shadow:0 4px 18px rgba(23,53,45,.06);
+      }
+      .hero { padding:1.5rem 1.7rem; border-radius:20px; color:white;
+        background:linear-gradient(120deg,#123E34,#24765F); margin-bottom:1.2rem; }
+      .hero h1 { margin:0; font-size:2rem; }
+      .hero p { margin:.45rem 0 0; color:#E4F0EA; }
+      .eyebrow { color:#DDB46A; font-size:.78rem; letter-spacing:.12em;
+        text-transform:uppercase; font-weight:700; }
+      div[data-testid="stPlotlyChart"] { background:white; border-radius:14px; }
+      #MainMenu, footer { visibility:hidden; }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-st.title("Revisión bibliográfica DEI")
-st.caption(
-    "Explora publicaciones consolidadas sobre recursos forestales, "
-    "biodiversidad y fauna silvestre. Las categorías múltiples se "
-    "contabilizan por separado."
+st.markdown(
+    """
+    <div class="hero">
+      <div class="eyebrow">CONCYTEC · Monitoreo de investigación</div>
+      <h1>Revisión bibliográfica DEI</h1>
+      <p>Explora publicaciones consolidadas sobre recursos forestales,
+      biodiversidad y fauna silvestre. Las categorías múltiples se
+      contabilizan por separado.</p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.sidebar:
